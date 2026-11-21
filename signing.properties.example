@@ -1,0 +1,6 @@
+# 该名为 signing.properties 后填写签名信息。
+# 密钥路径相对于项目根目录，Windows 路径请使用 /。
+storeFile=keystore/release.jks
+storePassword=
+keyAlias=
+keyPassword=
