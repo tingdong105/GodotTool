@@ -168,7 +168,7 @@ class EngineService : Service() {
                         .put("resources", nmResources).put("scripts", 0).put("adapter", "CNM")
                         .put("warning", "RECOVERY_INTERRUPTED").put("diagnostic", "Native recovery interrupted; decrypted resources are saved")
                         .put("enginePid", Process.myPid()).put("recoveryStartedAt", System.currentTimeMillis())
-                        .put("selection", selectionJson).put("layoutVersion", 3)
+                        .put("selection", selectionJson).put("layoutVersion", 4)
                         .put("outputPath", outputArchive!!.absolutePath))
                     synchronized(this) {
                         checkCanceled()
@@ -215,8 +215,10 @@ class EngineService : Service() {
         checkCanceled()
         if (!StorageAccess.granted(this)) throw CoreFailure("STORAGE_PERMISSION", "Shared storage access is required")
         val summary = event.getJSONObject("summary")
+        val outputs = PublicOutputs(StorageAccess.outputRoot())
+        val output = outputArchive ?: outputs.allocate(System.currentTimeMillis()).also { outputArchive = it }
         val checkpoint = JSONObject(summary.toString()).put("warning", "RECOVERY_INTERRUPTED")
-        outputArchive?.let { checkpoint.put("outputPath", it.absolutePath) }
+            .put("layoutVersion", 4).put("selection", selectionJson).put("outputPath", output.absolutePath)
         store.writeJson(taskId, "engine-result.json", JSONObject().put("type", "result").put("id", taskId).put("summary", checkpoint).toString())
         val dependencyFile = File(directory, "resource-dependencies.json")
         val dependencies = if (dependencyFile.isFile && dependencyFile.length() in 1..(128L * 1024 * 1024)) {
@@ -227,16 +229,15 @@ class EngineService : Service() {
         val assembler = ProjectAssembler()
         val project = assembler.assemble(directory, selection, ::checkCanceled, ::progress, dependencies)
         summary.put("rawResources", summary.optInt("resources")).put("resources", project.files).put("scripts", project.scripts)
-            .put("projectFiles", project.files).put("layoutVersion", 3).put("selection", selectionJson)
+            .put("projectFiles", project.files).put("layoutVersion", 4).put("selection", selectionJson)
         val report = ProjectAssembler.reportFile(directory, "recovery-report.txt")
-        report.appendText("\nGodotTool project: project/\nFiles: ${project.files}, readable scripts: ${project.scripts}\nSelection: $selectionJson\n")
+        report.appendText("\nGodotTool unpacked: unpacked/\nFiles: ${project.files}, readable scripts: ${project.scripts}\n")
         assembler.finish(directory, selection)
         assembler.organizeReports(directory)
-        val outputs = PublicOutputs(StorageAccess.outputRoot())
-        val output = outputArchive ?: outputs.allocate(System.currentTimeMillis()).also { outputArchive = it }
-        summary.put("outputPath", output.absolutePath).put("projectPath", "project/")
+        summary.put("outputPath", output.absolutePath).put("projectPath", "unpacked/")
         ProjectAssembler.reportFile(directory, "result.json").writeText(summary.toString(2))
         outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, ::progress, output)
+        store.writeJson(taskId, "published-result.json", summary.toString())
         finish(event)
     }
 

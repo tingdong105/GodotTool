@@ -15,7 +15,7 @@ import androidx.compose.ui.res.stringResource
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.ThemeMode
 import com.winter.godot.tool.data.ToolSettings
-import com.winter.godot.tool.feature.recovery.recoveryMode
+import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.components.ToolDialog
@@ -31,10 +31,10 @@ import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 
 /**
  * 分组管理外观、恢复偏好、存储和许可。
- * @param onDefaults 打开默认恢复选项。
+ * @param onChange 即时保存外观与解包选项。
  */
 @Composable
-fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit, onDefaults: () -> Unit) {
+fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit) {
     var clearing by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(horizontal = Theme.spacing.md, vertical = Theme.spacing.sm)) {
@@ -48,8 +48,7 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
         }
         item {
             SectionTitle(stringResource(R.string.recovery_content))
-            Card { ArrowPreference(title = stringResource(R.string.default_recovery),
-                endActions = { Text(stringResource(recoveryMode(settings.selection)), style = Theme.typography.detail) }, onClick = onDefaults) }
+            RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) })
         }
         item {
             SectionTitle(stringResource(R.string.storage))

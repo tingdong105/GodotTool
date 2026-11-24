@@ -7,6 +7,7 @@ var last_progress: int = 0
 var host_mode: bool = false
 var stopped: bool = false
 var original_paths: Dictionary = {}
+var model_dependencies: Dictionary = {}
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -76,20 +77,71 @@ func _selected(path: String, depth: int = 0) -> bool:
 		var ext: String = relative.get_extension().to_lower()
 		return (bool(request.get("scripts", true)) and ext in ["gd", "gdc", "gde", "cs"]) or (bool(request.get("scenes", true)) and ext in ["tscn", "scn", "tres", "res", "remap", "godot", "binary"])
 	var selection: Dictionary = request["selection"]
+	if model_dependencies.has(relative):
+		return true
 	if relative.begins_with(".godot/") or relative.begins_with(".import/"):
 		return false
 	if relative.begins_with("addons/"):
 		return bool(selection.get("plugins", true))
+	for folder: String in relative.get_base_dir().split("/"):
+		if folder.get_extension().to_lower() in ["mlpackage", "mlmodelc"]:
+			return bool(selection.get("assets", true))
 	if relative in ["project.godot", "project.binary", "engine.cfg", "export_presets.cfg"]:
 		return bool(selection.get("config", true))
 	var extension: String = relative.get_extension().to_lower()
 	if extension in ["remap", "import", "uid"]:
 		return _selected(relative.get_basename(), depth + 1)
-	if extension in ["gd", "gdc", "gde", "cs"]:
+	if extension in ["gd", "gdc", "gde", "cs", "gdshader", "gdshaderinc", "shader", "shaderinc"]:
 		return bool(selection.get("scripts", true))
 	if extension in ["tscn", "scn", "tres", "res"]:
 		return bool(selection.get("scenes", true))
-	return bool(selection.get("assets", true))
+	if extension in [
+		"png", "jpg", "jpeg", "webp", "svg", "svgz", "bmp", "gif", "ico", "tga", "exr", "hdr", "dds", "ktx", "ktx2", "basis",
+		"wav", "ogg", "mp3", "flac", "aac", "m4a", "opus", "wma", "aiff", "aif",
+		"mp4", "webm", "ogv", "mov", "avi", "mkv", "mpeg", "mpg", "m4v",
+		"ttf", "otf", "woff", "woff2", "fnt", "font", "fontdata",
+		"glb", "gltf", "obj", "fbx", "dae", "blend", "3ds", "stl", "ply",
+		"onnx", "tflite", "mlmodel", "mlpackage", "ncnnpack",
+		"ctex", "stex", "tex", "atlastex", "sample", "oggstr", "mp3str",
+	]:
+		return bool(selection.get("assets", true))
+	return bool(selection.get("config", true))
+
+## 为选中的 glTF 读取本地缓冲区和图片依赖。
+## infos 为资源清单，返回是否完成解析。
+func _read_model_dependencies(infos: Array) -> bool:
+	for info: Object in infos:
+		var path: String = info.get_path()
+		if path.get_extension().to_lower() != "gltf" or not _selected(path):
+			continue
+		if info.get_size() > 8388608:
+			_fail("SIZE_LIMIT", "Model metadata exceeds limit: " + path)
+			return false
+		var model: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not (model is Dictionary):
+			continue
+		for key: String in ["buffers", "images"]:
+			var entries: Variant = model.get(key, [])
+			if not (entries is Array):
+				continue
+			for entry: Variant in entries:
+				if not (entry is Dictionary):
+					continue
+				var uri: String = str(entry.get("uri", ""))
+				if uri.is_empty() or ":" in uri or uri.begins_with("//"):
+					continue
+				var decoded: String = uri.get_slice("#", 0).get_slice("?", 0).replace("+", "%2B").uri_decode().replace("\\", "/")
+				if decoded.is_empty():
+					continue
+				if decoded.begins_with("/"):
+					_fail("UNSAFE_PATH", "Absolute model dependency: " + uri)
+					return false
+				var dependency: String = _relative(_relative(path).get_base_dir().path_join(decoded).simplify_path())
+				if dependency.is_empty():
+					_fail("UNSAFE_PATH", "Model dependency escaped project: " + uri)
+					return false
+				model_dependencies[dependency] = true
+	return true
 
 func _needed(path: String) -> bool:
 	if not request.has("selection"):
@@ -180,6 +232,8 @@ func _run() -> void:
 		_fail("ENTRY_LIMIT")
 		return
 	_read_origins(catalog)
+	if not _read_model_dependencies(catalog):
+		return
 	var infos: Array = []
 	for info: Object in catalog:
 		if _needed(info.get_path()):

@@ -1,5 +1,6 @@
 package com.winter.godot.tool.data
 
+import com.winter.godot.core.io.ModelDependencies
 import com.winter.godot.core.io.SafeFiles
 import com.winter.godot.core.model.CoreFailure
 import com.winter.godot.core.model.CoreProgress
@@ -35,12 +36,15 @@ class ProjectAssembler {
     fun assemble(directory: File, selection: RecoverySelection, check: () -> Unit, progress: (CoreProgress) -> Unit,
         fallbackResources: List<String> = emptyList()): Result {
         if (!selection.hasContent) throw CoreFailure("EMPTY_SELECTION", "No recovery content selected")
-        val raw = collect(File(directory, "raw"), check)
-        val recovered = collect(File(directory, "recovered"), check).filterKeys(selection::includes)
+        val raw = collect(contentDirectory(directory, "original", "raw"), check)
+        val restored = collect(File(directory, "recovered"), check)
+        val modelDependencies = ModelDependencies.collect(raw + restored, selection::includes, check)
+        val includes: (String) -> Boolean = { selection.includes(it) || it in modelDependencies }
+        val recovered = restored.filterKeys(includes)
         val candidates = linkedMapOf<String, File>()
         for ((path, file) in raw) {
             check()
-            if (!selection.includes(path)) continue
+            if (!includes(path)) continue
             val extension = path.substringAfterLast('.', "").lowercase()
             val converted = when (extension) {
                 "gdc", "gde" -> path.substringBeforeLast('.') + ".gd"
@@ -50,7 +54,7 @@ class ProjectAssembler {
                 "remap" -> path.removeSuffix(".remap")
                 else -> ""
             }
-            if (converted.isNotEmpty() && (converted in recovered || converted in raw && selection.includes(converted))) continue
+            if (converted.isNotEmpty() && (converted in recovered || converted in raw && includes(converted))) continue
             candidates[path] = file
         }
         // 仅保留导入器明确报告仍需使用的缓存资源，常规缓存不进入源码工程。
@@ -62,7 +66,7 @@ class ProjectAssembler {
         candidates.putAll(recovered)
         if (candidates.isEmpty()) throw CoreFailure("NO_MATCHING_CONTENT", "The selected content was not found in this project")
         val stage = File(directory, ".project-staging")
-        val target = File(directory, "project")
+        val target = File(directory, "unpacked")
         if (target.exists() || stage.exists()) throw CoreFailure("OUTPUT_EXISTS", "Project output already exists")
         if (!stage.mkdir()) throw CoreFailure("WRITE_FAILED", "Cannot create project staging directory")
         try {
@@ -104,9 +108,12 @@ class ProjectAssembler {
      * @param selection 用户选择。
      */
     fun finish(directory: File, selection: RecoverySelection) {
-        check(File(directory, "project").isDirectory)
+        check(File(directory, "unpacked").isDirectory)
         removeOwned(directory, File(directory, "recovered"))
-        if (!selection.keepRaw) removeOwned(directory, File(directory, "raw"))
+        val original = contentDirectory(directory, "original", "raw")
+        if (!selection.keepRaw) removeOwned(directory, original)
+        else if (original.name == "raw" && original.exists() && !original.renameTo(File(directory, "original")))
+            throw CoreFailure("WRITE_FAILED", "Cannot finalize original resources")
         for (name in listOf(".staging", ".nm-staging")) removeOwned(directory, File(directory, name))
     }
 
@@ -117,7 +124,7 @@ class ProjectAssembler {
     fun organizeReports(directory: File) {
         val reports = SafeFiles.resolve(directory, "reports").apply { mkdirs() }
         for (file in directory.listFiles().orEmpty()) {
-            if (!file.isFile || file.name in setOf("inputs.json", "request-options.json", "engine-result.json", "workspace.json")) continue
+            if (!file.isFile || file.name in setOf("inputs.json", "request-options.json", "engine-result.json", "published-result.json", "workspace.json", "report.txt", RecoveryReport.FILE_NAME)) continue
             if (file.extension !in setOf("json", "log", "txt")) continue
             val destination = SafeFiles.resolve(reports, file.name)
             if (destination.exists() || !file.renameTo(destination)) throw CoreFailure("WRITE_FAILED", "Cannot organize report: ${file.name}")
@@ -154,11 +161,23 @@ class ProjectAssembler {
      */
     private fun removeOwned(directory: File, target: File) {
         check(target.canonicalFile.parentFile == directory.canonicalFile)
-        check(target.name in setOf("raw", "recovered", ".staging", ".nm-staging", ".project-staging"))
+        check(target.name in setOf("original", "raw", "recovered", ".staging", ".nm-staging", ".project-staging"))
         if (target.exists() && !target.deleteRecursively()) throw CoreFailure("DELETE_FAILED", target.name)
     }
 
     companion object {
+        /**
+         * 优先使用新版内容目录，兼容旧版及处理中目录。
+         * 使用示例：ProjectAssembler.contentDirectory(workspace, "unpacked", "project", "recovered")。
+         * @param directory 任务目录。
+         * @param name 新目录名称。
+         * @param legacyNames 旧目录名称。
+         * @return 已有目录或新版目标目录。
+         */
+        fun contentDirectory(directory: File, name: String, vararg legacyNames: String): File =
+            (listOf(name) + legacyNames).map { SafeFiles.resolve(directory, it) }.firstOrNull { it.isDirectory }
+                ?: SafeFiles.resolve(directory, name)
+
         /**
          * 定位新版报告目录，兼容旧版直接放在结果根目录的报告。
          * 使用示例：ProjectAssembler.reportFile(output, "result.json")。
@@ -166,7 +185,16 @@ class ProjectAssembler {
          * @param name 报告名称。
          * @return 报告的实际位置。
          */
-        fun reportFile(directory: File, name: String): File = SafeFiles.resolve(
-            if (File(directory, "reports").isDirectory) SafeFiles.resolve(directory, "reports") else directory, name)
+        fun reportFile(directory: File, name: String): File {
+            val reports = SafeFiles.resolve(directory, "reports")
+            val internal = SafeFiles.resolve(reports, name)
+            val previous = SafeFiles.resolve(directory, name)
+            return when {
+                internal.isFile -> internal
+                previous.isFile -> previous
+                reports.isDirectory -> internal
+                else -> previous
+            }
+        }
     }
 }

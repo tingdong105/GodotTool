@@ -68,6 +68,10 @@ class WorkspaceStore(private val context: Context) {
         val output = readableDirectory(id)
         // 公共结果已完成而进程来不及写私有终态时，保留已完成结果。
         val published = runCatching {
+            val local = if (summary.optInt("layoutVersion") >= 4) File(directory(id), "published-result.json")
+                else ProjectAssembler.reportFile(output, "result.json")
+            val completed = if (local.isFile && local.length() in 1..1048576) JSONObject(local.readText()) else null
+            if (completed != null && completed.optString("warning") != "RECOVERY_INTERRUPTED") return@runCatching completed
             val path = summary.optString("outputPath")
             if (path.endsWith(".zip")) {
                 val archive = File(path).canonicalFile
@@ -89,17 +93,19 @@ class WorkspaceStore(private val context: Context) {
         }.getOrNull()
         if (published != null && published.optString("outputPath").isNotEmpty() && published.has("resources") && published.optString("warning") != "RECOVERY_INTERRUPTED") {
             event.put("summary", published)
+            ProjectAssembler.reportFile(output, "result.json").writeText(published.toString(2))
         } else {
             val diagnostic = EngineExitDiagnostics.read(context, output, summary.optLong("recoveryStartedAt", since), summary.optInt("enginePid"))
-            val recovered = File(output, if (File(output, "project").isDirectory) "project" else "recovered")
+            val recovered = ProjectAssembler.contentDirectory(output, "unpacked", "project", "recovered")
             val scripts = if (recovered.isDirectory) recovered.walkTopDown().onEnter { it.canonicalFile.toPath().startsWith(output.canonicalFile.toPath()) }
                 .count { it.isFile && it.extension.equals("gd", true) } else 0
             summary.put("scripts", scripts).put("warning", "NATIVE_RECOVERY_INTERRUPTED").put("errorCode", "ENGINE_EXIT").put("diagnostic", diagnostic)
+            ProjectAssembler.reportFile(output, "engine-exit.log").writeText(diagnostic)
             val report = ProjectAssembler.reportFile(output, "recovery-report.txt")
-            val previous = if (report.isFile && report.length() in 1..131072) report.readText().takeLast(12000) else ""
-            report.writeText("脚本恢复中断，已解密资源保留。\n已生成可读脚本：$scripts\n\n$diagnostic\n\nPrevious report:\n$previous")
+            report.appendText("\n脚本恢复中断，已解密资源保留。\n已生成可读脚本：$scripts\n")
             ProjectAssembler.reportFile(output, "result.json").writeText(summary.toString(2))
         }
+        RecoveryReport.write(output)
         writeJson(id, "engine-result.json", event.toString())
         val archive = summary.optString("outputPath").takeIf { it.endsWith(".zip") }?.let(::File)
         if (archive != null) runCatching { PublicOutputs(StorageAccess.outputRoot()).publish(output, since, {}, {}, archive) }
@@ -122,15 +128,19 @@ class WorkspaceStore(private val context: Context) {
             for (i in 0 until array.length()) sources += SafeFiles.relative(array.getJSONObject(i).getString("path"))
         }
         val entries = mutableListOf<WorkspaceEntry>()
-        for (folder in listOf("project", "raw", "recovered", "reports")) {
-            val base = File(directory, folder)
+        for (base in listOf(
+            ProjectAssembler.contentDirectory(directory, "unpacked", "project", "recovered"),
+            ProjectAssembler.contentDirectory(directory, "original", "raw"),
+        )) {
             if (!base.exists()) continue
+            val folder = base.name
             base.walkTopDown().onEnter { it.canonicalFile.toPath().startsWith(directory.canonicalFile.toPath()) }.filter { it.isFile }.forEach { file ->
                 if (entries.size >= 200000) throw CoreFailure("ENTRY_LIMIT", "Workspace entry count exceeds 200000")
                 val relative = SafeFiles.relative(file.relativeTo(base).invariantSeparatorsPath)
-                val source = if (folder == "reports") "" else when {
+                val source = when {
                     relative in sources -> relative
                     relative.endsWith(".gd") && relative.dropLast(3) + ".gdc" in sources -> relative.dropLast(3) + ".gdc"
+                    relative.endsWith(".gd") && relative.dropLast(3) + ".gde" in sources -> relative.dropLast(3) + ".gde"
                     relative.endsWith(".tscn") && relative.dropLast(5) + ".scn" in sources -> relative.dropLast(5) + ".scn"
                     relative.endsWith(".tres") && relative.dropLast(5) + ".res" in sources -> relative.dropLast(5) + ".res"
                     else -> ""
@@ -138,10 +148,11 @@ class WorkspaceStore(private val context: Context) {
                 entries += WorkspaceEntry("$folder/$relative", file.length(), source)
             }
         }
-        for (name in listOf("raw-index.json", "recovery-report.txt", "result.json", "engine.log", "bootstrap.log", "engine-startup.log", "engine-logcat.log")) {
-            val file = File(directory, name)
-            if (file.isFile) entries += WorkspaceEntry(name, file.length())
-        }
+        val report = File(directory, RecoveryReport.FILE_NAME).takeIf { it.isFile }
+            ?: File(directory, "report.txt").takeIf { it.isFile }
+            ?: ProjectAssembler.reportFile(directory, "recovery-report.txt").takeIf { it.isFile }
+            ?: ProjectAssembler.reportFile(directory, "result.json").takeIf { it.isFile }
+        if (report != null) entries += WorkspaceEntry(report.relativeTo(directory).invariantSeparatorsPath, report.length())
         val sorted = entries.sortedBy { it.path }
         val json = JSONArray()
         sorted.forEach { json.put(JSONObject().put("path", it.path).put("size", it.size).put("source", it.source)) }
@@ -183,13 +194,15 @@ class WorkspaceStore(private val context: Context) {
      * @return 有效结果根目录。
      */
     private fun readableDirectory(id: String): File {
+        val local = directory(id)
+        if (File(local, "unpacked").isDirectory || File(local, "original").isDirectory) return local
         val path = result(id)?.optJSONObject("summary")?.optString("outputPath").orEmpty()
         if (path.isNotEmpty()) {
             val output = File(path).canonicalFile
             val root = StorageAccess.outputRoot().canonicalFile
             if (output.parentFile == root && output.name.matches(Regex("\\d{6}_\\d+")) && output.isDirectory) return output
         }
-        return directory(id)
+        return local
     }
 
     /**

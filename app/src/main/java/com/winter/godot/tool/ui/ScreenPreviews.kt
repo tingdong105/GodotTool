@@ -55,7 +55,7 @@ private fun RootTabsPreview() {
     GodotToolTheme {
         RootTabs(screen, true, { screen = it }) { page ->
             if (page == Screen.HOME) HomeScreen(exampleTask, false, {}, {}, {}, {})
-            else SettingsScreen(ToolSettings(), false, {}, {}, {})
+            else SettingsScreen(ToolSettings(), false, {}, {})
         }
     }
 }
@@ -73,7 +73,7 @@ private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) { Tasks
  */
 @ScreenPreviews
 @Composable
-private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), false, {}, {}, {}) } } }
+private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), false, {}, {}) } } }
 
 /**
  * 内置文件选择器的四种设备与主题预览。
@@ -83,7 +83,7 @@ private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
 private fun FilesPreview() { GodotToolTheme { ToolScaffold(Screen.FILES) {
     FilePickerScreen(ToolUiState(screen = Screen.FILES, browserPath = "/storage/emulated/0/Download",
         browserFiles = listOf(BrowserFile("Projects", "/storage/emulated/0/Download/Projects", true, 0),
-            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140))), true, {}, {}, {})
+            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140))), true, {}, {}, {}, {})
 } } }
 
 /**
@@ -92,10 +92,10 @@ private fun FilesPreview() { GodotToolTheme { ToolScaffold(Screen.FILES) {
 @ScreenPreviews
 @Composable
 private fun WorkspacePreview() {
-    val entries = listOf(WorkspaceEntry("raw/scripts/Exporter.gdc", 16384), WorkspaceEntry("project/scripts/Exporter.gd", 32768, "scripts/Exporter.gdc"),
-        WorkspaceEntry("raw/project.binary", 4096), WorkspaceEntry("project/project.godot", 2048), WorkspaceEntry("recovery-report.txt", 1024))
+    val entries = listOf(WorkspaceEntry("original/scripts/Exporter.gdc", 16384), WorkspaceEntry("unpacked/scripts/Exporter.gd", 32768, "scripts/Exporter.gdc"),
+        WorkspaceEntry("original/project.binary", 4096), WorkspaceEntry("unpacked/project.godot", 2048), WorkspaceEntry("report.md", 1024))
     GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "NodeMotion 1.0.2") { WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries,
-        previewPath = "project/scripts/Exporter.gd", previewText = "extends Node\n\nfunc export_video():\n\tvar encoder = VideoEncoder.new()\n\tencoder.encode_at(frame)"), {}) } }
+        previewPath = "unpacked/scripts/Exporter.gd", previewText = "extends Node\n\nfunc export_video():\n\tvar encoder = VideoEncoder.new()\n\tencoder.encode_at(frame)"), {}) } }
 }
 
 /**
@@ -104,28 +104,19 @@ private fun WorkspacePreview() {
 @ScreenPreviews
 @Composable
 private fun UnrecoveredWorkspacePreview() {
-    val entries = listOf(WorkspaceEntry("raw/scripts/Main.gdc", 16384), WorkspaceEntry("recovery-report.txt", 2048))
+    val entries = listOf(WorkspaceEntry("original/scripts/Main.gdc", 16384), WorkspaceEntry("report.md", 2048))
     GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "NodeMotion") {
         WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries), {})
     } }
 }
 
 /**
- * 恢复内容选择的手机与平板明暗预览。
+ * 级联解包选项的手机与平板明暗预览。
  */
 @ScreenPreviews
 @Composable
 private fun RecoveryOptionsPreview() { GodotToolTheme {
-    ToolScaffold(Screen.RECOVERY) {
-        RecoveryOptions(RecoverySelection.scriptsOnly(), setOf("/storage/emulated/0/Download/Example.pck"), true, {}, {})
+    ToolScaffold(Screen.SETTINGS) {
+        RecoveryOptions(RecoverySelection.scriptsOnly(), {})
     }
 } }
-
-/**
- * 默认恢复范围的四种设备与主题预览。
- */
-@ScreenPreviews
-@Composable
-private fun DefaultsPreview() { GodotToolTheme { ToolScaffold(Screen.DEFAULTS) {
-    RecoveryOptions(RecoverySelection(), emptySet(), true, {}, {})
-} } }

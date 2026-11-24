@@ -38,7 +38,6 @@ import com.winter.godot.tool.R
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.feature.home.HomeScreen
-import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
@@ -118,19 +117,12 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
                         { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
                         { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, model::cancel, logs)
                     Screen.TASKS -> TasksScreen(tasks, active, model::cancel, model::openWorkspace, model::retry, model::delete)
-                    Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished) {
-                        model.navigate(Screen.SETTINGS); model.navigate(Screen.DEFAULTS)
-                    }
-                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile) { model.navigate(Screen.RECOVERY) }
-                    Screen.RECOVERY -> RecoveryOptions(pageUi.selection, pageUi.chosenFiles, active == null && pageUi.chosenFiles.isNotEmpty(), model::editSelection) {
+                    Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished)
+                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::editSelection) {
                         if (StorageAccess.granted(context)) {
                             if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                             model.recoverChosen()
                         } else requestFiles()
-                    }
-                    Screen.DEFAULTS -> RecoveryOptions(pageUi.selection, emptySet(), true, model::editSelection) {
-                        model.updateSettings(settings.withSelection(pageUi.selection))
-                        model.back()
                     }
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                 }
@@ -194,8 +186,6 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Screen.TASKS -> stringResource(R.string.history)
         Screen.FILES -> stringResource(R.string.select_file)
         Screen.WORKSPACE -> workspaceName.ifEmpty { stringResource(R.string.workspace) }
-        Screen.DEFAULTS -> stringResource(R.string.default_recovery)
-        Screen.RECOVERY -> stringResource(R.string.prepare_import)
     }
     val pages = rememberSaveableStateHolder()
     key(screen) {

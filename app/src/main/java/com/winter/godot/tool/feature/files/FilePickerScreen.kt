@@ -21,7 +21,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
+import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
+import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.FileSearch
@@ -39,10 +41,12 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 /**
  * 浏览共享存储，目录与文件共用连续滚动列表。
  * @param onChoose 切换所选文件或 APK 分包。
- * @param onStart 进入本次恢复选项。
+ * @param onSelection 修改本次解包选项。
+ * @param onStart 使用当前选项开始解包。
  */
 @Composable
-fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) -> Unit, onChoose: (String) -> Unit, onStart: () -> Unit) {
+fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) -> Unit, onChoose: (String) -> Unit,
+    onSelection: (RecoverySelection) -> Unit, onStart: () -> Unit) {
     var search by rememberSaveable(state.browserPath) { mutableStateOf("") }
     val root = StorageAccess.root().absolutePath
     val relative = state.browserPath.removePrefix(root).trim('/')
@@ -72,7 +76,10 @@ fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) ->
                 }
             }
         }
-        PrimaryButton(if (state.chosenFiles.isEmpty()) stringResource(R.string.next_step) else stringResource(R.string.next_selected, state.chosenFiles.size),
-            onStart, Modifier.fillMaxWidth().padding(vertical = Theme.spacing.md), enabled = enabled && state.chosenFiles.isNotEmpty() && !state.loading)
+        SectionTitle(stringResource(R.string.recovery_content))
+        RecoveryOptions(state.selection, onSelection, enabled)
+        PrimaryButton(if (state.chosenFiles.isEmpty()) stringResource(R.string.start_recovery) else stringResource(R.string.start_selected, state.chosenFiles.size),
+            onStart, Modifier.fillMaxWidth().padding(vertical = Theme.spacing.md),
+            enabled = enabled && state.chosenFiles.isNotEmpty() && state.selection.hasContent && !state.loading)
     }
 }

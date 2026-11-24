@@ -39,7 +39,7 @@ import java.nio.charset.CodingErrorAction
  */
 data class ToolUiState(
     val screen: Screen = Screen.HOME,
-    val selection: RecoverySelection = RecoverySelection(),
+    val selection: RecoverySelection = RecoverySelection.scriptsOnly(),
     val browserPath: String = "",
     val browserFiles: List<BrowserFile> = emptyList(),
     val chosenFiles: Set<String> = emptySet(),
@@ -80,7 +80,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         val id = saved.get<String>("workspaceId")
         if (backStack.value.last() == Screen.WORKSPACE) {
             if (id != null) openWorkspace(id) else navigate(Screen.HOME)
-        } else if (ui.value.screen in listOf(Screen.FILES, Screen.RECOVERY)) browseFiles(ui.value.browserPath)
+        } else if (ui.value.screen == Screen.FILES) browseFiles(ui.value.browserPath)
     }
 
     /**
@@ -96,9 +96,9 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * @param screen 当前栈顶。
      */
     private fun showScreen(screen: Screen) {
-        if (screen !in listOf(Screen.FILES, Screen.RECOVERY)) fileJob?.cancel()
+        if (screen != Screen.FILES) fileJob?.cancel()
         if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
-        mutableUi.update { it.copy(screen = screen, selection = if (screen == Screen.RECOVERY || screen == Screen.DEFAULTS) settings.value.selection else it.selection, previewPath = null, previewText = "", previewImage = null, notice = null,
+        mutableUi.update { it.copy(screen = screen, selection = if (screen == Screen.FILES) settings.value.selection else it.selection, previewPath = null, previewText = "", previewImage = null, notice = null,
             workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
             entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false) }
         saved.saveRecoverySelection(ui.value.selection)
@@ -213,8 +213,9 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     fun preview(entry: WorkspaceEntry) {
         val id = ui.value.workspaceId ?: return
         if (entry.extension in setOf("gdc", "gde")) {
-            val relative = entry.path.removePrefix("raw/").removePrefix("project/").removePrefix("recovered/").substringBeforeLast('.') + ".gd"
-            ui.value.entries.firstOrNull { it.path == "project/$relative" || it.path == "recovered/$relative" }?.let { preview(it); return }
+            val relative = entry.path.removePrefix("original/").removePrefix("unpacked/").removePrefix("raw/")
+                .removePrefix("project/").removePrefix("recovered/").substringBeforeLast('.') + ".gd"
+            ui.value.entries.firstOrNull { it.path in listOf("unpacked/$relative", "project/$relative", "recovered/$relative") }?.let { preview(it); return }
         }
         previewJob?.cancel()
         mutableUi.update { it.copy(previewPath = entry.path, previewLoading = true, previewText = "", previewImage = null, truncated = false, binary = false) }

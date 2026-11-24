@@ -48,9 +48,11 @@ class PublicOutputs(private val root: File) {
      */
     fun publish(workspace: File, time: Long, check: () -> Unit, progress: (CoreProgress) -> Unit, destination: File? = null): File {
         val boundary = workspace.canonicalFile.toPath()
-        val files = mutableListOf<File>()
-        for (folder in listOf("raw", "recovered", "project", "reports")) {
-            val source = File(workspace, folder)
+        val files = mutableListOf<Pair<File, String>>()
+        for ((folder, source) in listOf(
+            "unpacked" to ProjectAssembler.contentDirectory(workspace, "unpacked", "project", "recovered"),
+            "original" to ProjectAssembler.contentDirectory(workspace, "original", "raw"),
+        )) {
             if (!source.exists()) continue
             source.walkTopDown().onEnter {
                 check()
@@ -60,25 +62,22 @@ class PublicOutputs(private val root: File) {
                 check()
                 if (!it.canonicalFile.toPath().startsWith(boundary)) throw CoreFailure("UNSAFE_PATH", "Output file escaped workspace")
                 if (files.size >= 200000) throw CoreFailure("ENTRY_LIMIT", "Too many output files")
-                files += it
+                files += it to SafeFiles.relative("$folder/${it.relativeTo(source).invariantSeparatorsPath}")
             }
         }
-        for (name in listOf("raw-index.json", "result.json", "recovery-report.txt", "engine.log", "bootstrap.log", "engine-startup.log", "engine-logcat.log"))
-            File(workspace, name).takeIf { it.isFile }?.let(files::add)
-        if (files.isEmpty()) throw CoreFailure("EMPTY_EXPORT", "No recovered files to save")
+        files += RecoveryReport.write(workspace, check) to RecoveryReport.FILE_NAME
         val target = destination ?: allocate(time)
         if (target.canonicalFile.parentFile != root.canonicalFile || !target.name.matches(Regex("\\d{6}_\\d+\\.zip")))
             throw CoreFailure("UNSAFE_PATH", "Invalid output archive")
         val temporary = File(root, ".${target.name}-${UUID.randomUUID()}.part")
-        val snapshots = files.map { it to it.length() }
-        val total = snapshots.fold(0L) { sum, item -> Math.addExact(sum, item.second) }
+        val snapshots = files.map { (file, name) -> Triple(file, name, file.length()) }
+        val total = snapshots.fold(0L) { sum, item -> Math.addExact(sum, item.third) }
         try {
             if (root.usableSpace < total + 1024 * 1024) throw CoreFailure("NO_SPACE", "Insufficient output capacity")
             var done = 0L
             ZipOutputStream(temporary.outputStream().buffered()).use { zip ->
-                snapshots.forEachIndexed { index, (file, expected) ->
+                snapshots.forEachIndexed { index, (file, relative, expected) ->
                     check()
-                    val relative = SafeFiles.relative(file.relativeTo(workspace).invariantSeparatorsPath)
                     zip.putNextEntry(ZipEntry(relative))
                     val copied = file.inputStream().use { input ->
                         val update: (Long) -> Unit = { bytes -> progress(CoreProgress("publish", relative, done + bytes, total, index, files.size)) }

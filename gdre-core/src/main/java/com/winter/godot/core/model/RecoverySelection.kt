@@ -27,12 +27,14 @@ data class RecoverySelection(
         val name = SafeFiles.relative(path)
         if (name.startsWith(".godot/") || name.startsWith(".import/")) return false
         if (name.startsWith("addons/")) return plugins
+        if (name.split('/').dropLast(1).any { it.substringAfterLast('.', "").lowercase() in modelPackageExtensions }) return assets
         if (name in setOf("project.godot", "project.binary", "engine.cfg", "export_presets.cfg")) return config
         if (name.endsWith(".remap") || name.endsWith(".import") || name.endsWith(".uid")) return includes(name.substringBeforeLast('.'))
         return when (name.substringAfterLast('.', "").lowercase()) {
-            "gd", "gdc", "gde", "cs" -> scripts
+            "gd", "gdc", "gde", "cs", "gdshader", "gdshaderinc", "shader", "shaderinc" -> scripts
             "tscn", "scn", "tres", "res" -> scenes
-            else -> assets
+            in assetExtensions -> assets
+            else -> config
         }
     }
 
@@ -51,6 +53,18 @@ data class RecoverySelection(
     }
 
     companion object {
+        private val modelPackageExtensions = setOf("mlpackage", "mlmodelc")
+
+        private val assetExtensions = setOf(
+            "png", "jpg", "jpeg", "webp", "svg", "svgz", "bmp", "gif", "ico", "tga", "exr", "hdr", "dds", "ktx", "ktx2", "basis",
+            "wav", "ogg", "mp3", "flac", "aac", "m4a", "opus", "wma", "aiff", "aif",
+            "mp4", "webm", "ogv", "mov", "avi", "mkv", "mpeg", "mpg", "m4v",
+            "ttf", "otf", "woff", "woff2", "fnt", "font", "fontdata",
+            "glb", "gltf", "obj", "fbx", "dae", "blend", "3ds", "stl", "ply",
+            "onnx", "tflite", "mlmodel", "mlpackage", "ncnnpack",
+            "ctex", "stex", "tex", "atlastex", "sample", "oggstr", "mp3str",
+        )
+
         /**
          * 仅恢复项目脚本，适合静态分析业务逻辑。
          * 使用示例：RecoverySelection.scriptsOnly()。

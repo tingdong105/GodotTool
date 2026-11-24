@@ -13,7 +13,7 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
  * @author Tingdong
  * @date 2026-11-24
  */
-enum class Screen : NavKey { HOME, TASKS, SETTINGS, FILES, WORKSPACE, RECOVERY, DEFAULTS }
+enum class Screen : NavKey { HOME, TASKS, SETTINGS, FILES, WORKSPACE }
 
 /**
  * 为官方 NavDisplay 提供可恢复的业务返回栈。
@@ -77,12 +77,18 @@ class ToolNavigation(private val saved: SavedStateHandle) {
     private fun restore(): List<Screen> {
         val stored = saved.get<ArrayList<String>>("navigationStack")
         if (stored != null) {
-            val screens = stored.mapNotNull { name -> Screen.entries.firstOrNull { it.name == name } }
-            if (screens.size == stored.size && screens.size in 1..Screen.entries.size && screens.distinct().size == screens.size &&
+            val restored = stored.mapNotNull { name -> when (name) {
+                "RECOVERY" -> Screen.FILES
+                "DEFAULTS" -> Screen.SETTINGS
+                else -> Screen.entries.firstOrNull { it.name == name }
+            } }
+            val screens = restored.distinct()
+            if (restored.size == stored.size && screens.size in 1..Screen.entries.size &&
                 screens.first() in listOf(Screen.HOME, Screen.SETTINGS) && screens.drop(1).none { it == Screen.HOME || it == Screen.SETTINGS }) return screens
         }
         return when (saved.get<String>("screen")) {
-            Screen.SETTINGS.name -> listOf(Screen.SETTINGS)
+            Screen.SETTINGS.name, "DEFAULTS" -> listOf(Screen.SETTINGS)
+            Screen.FILES.name, "RECOVERY" -> listOf(Screen.HOME, Screen.FILES)
             Screen.TASKS.name -> listOf(Screen.HOME, Screen.TASKS)
             Screen.WORKSPACE.name -> if (saved.get<String>("workspaceOrigin") == Screen.TASKS.name)
                 listOf(Screen.HOME, Screen.TASKS, Screen.WORKSPACE) else listOf(Screen.HOME, Screen.WORKSPACE)

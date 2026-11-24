@@ -225,9 +225,12 @@ class ToolRepository(context: Context) {
     /**
      * 从 MMKV 读取并校验主题与恢复开关。
      */
-    private fun loadSettings(): ToolSettings = ToolSettings(runCatching { ThemeMode.valueOf(kv.decodeString("theme", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
-        kv.decodeBool("scripts", true), kv.decodeBool("scenes", true), kv.decodeBool("assets", true),
-        kv.decodeBool("plugins", kv.decodeBool("scripts", true)), kv.decodeBool("project-config", true), kv.decodeBool("keep-raw", false))
+    private fun loadSettings(): ToolSettings {
+        val defaults = ToolSettings()
+        return ToolSettings(runCatching { ThemeMode.valueOf(kv.decodeString("theme", defaults.theme.name)!!) }.getOrDefault(defaults.theme),
+            kv.decodeBool("scripts", defaults.scripts), kv.decodeBool("scenes", defaults.scenes), kv.decodeBool("assets", defaults.assets),
+            kv.decodeBool("plugins", defaults.plugins), kv.decodeBool("project-config", defaults.config), kv.decodeBool("keep-raw", defaults.keepRaw))
+    }
 
     /**
      * 从 MMKV 读取有效的历史任务。

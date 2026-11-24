@@ -2,6 +2,7 @@ package com.winter.godot.tool.feature.CNM
 
 import com.winter.godot.core.io.ArchiveSet
 import com.winter.godot.core.io.GodotDependencies
+import com.winter.godot.core.io.ModelDependencies
 import com.winter.godot.core.io.SafeFiles
 import com.winter.godot.core.model.CoreFailure
 import com.winter.godot.core.model.CoreProgress
@@ -148,8 +149,13 @@ object NodeMotionAdapter {
                     temporary.delete()
                 }
                 done += entry.size
-                if (target.extension in setOf("import", "remap") && target.length() <= 2097152) {
-                    for (path in GodotDependencies.paths(target.readText())) {
+                val dependencies = when {
+                    target.extension in setOf("import", "remap") && target.length() <= 2097152 -> GodotDependencies.paths(target.readText())
+                    ModelDependencies.supports(entry.path) -> ModelDependencies.paths(entry.path, target)
+                    else -> emptySet()
+                }
+                if (dependencies.isNotEmpty()) {
+                    for (path in dependencies) {
                         val dependency = byPath[path] ?: continue
                         if (scheduled.add(path)) {
                             selected += dependency

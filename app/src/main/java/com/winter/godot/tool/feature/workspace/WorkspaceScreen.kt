@@ -61,15 +61,22 @@ fun WorkspaceScreen(state: ToolUiState, onPreview: (WorkspaceEntry) -> Unit, act
     var prefix by rememberSaveable(state.workspaceId) { mutableStateOf("") }
     var sourceType by rememberSaveable(state.workspaceId) { mutableStateOf("auto") }
     val projectRoot = remember(state.entries) { when {
+        state.entries.any { it.path.startsWith("unpacked/") } -> "unpacked/"
         state.entries.any { it.path.startsWith("project/") } -> "project/"
         state.entries.any { it.path.startsWith("recovered/") } -> "recovered/"
         else -> ""
     } }
-    val hasRaw = remember(state.entries) { state.entries.any { it.path.startsWith("raw/") } }
-    val sources = listOfNotNull("project".takeIf { projectRoot.isNotEmpty() }, "raw".takeIf { hasRaw }, "all")
+    val originalRoot = remember(state.entries) { when {
+        state.entries.any { it.path.startsWith("original/") } -> "original/"
+        state.entries.any { it.path.startsWith("raw/") } -> "raw/"
+        else -> ""
+    } }
+    val sources = listOfNotNull("project".takeIf { projectRoot.isNotEmpty() }, "raw".takeIf { originalRoot.isNotEmpty() }, "all")
     val source = sourceType.takeIf { it in sources } ?: sources.first()
-    val base = when (source) { "project" -> projectRoot; "raw" -> "raw/"; else -> "" }
-    val report = remember(state.entries) { state.entries.firstOrNull { it.path in setOf("reports/recovery-report.txt", "recovery-report.txt") }
+    val base = when (source) { "project" -> projectRoot; "raw" -> originalRoot; else -> "" }
+    val report = remember(state.entries) { state.entries.firstOrNull { it.path == "report.md" }
+        ?: state.entries.firstOrNull { it.path == "report.txt" }
+        ?: state.entries.firstOrNull { it.path in setOf("reports/recovery-report.txt", "recovery-report.txt") }
         ?: state.entries.firstOrNull { it.path in setOf("reports/result.json", "result.json") } }
     val compiledCount = remember(state.entries) { state.entries.count { it.extension in setOf("gdc", "gde") } }
     val sourceCount = remember(state.entries) { state.entries.count { it.extension == "gd" } }
