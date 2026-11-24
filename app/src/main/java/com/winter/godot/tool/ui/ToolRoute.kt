@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
 import com.winter.godot.tool.feature.files.FilePickerScreen
+import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.settings.SettingsScreen
@@ -124,7 +125,7 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
                         { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, logs)
                     Screen.TASKS -> TasksScreen(tasks, active, model::openWorkspace, model::retry, model::delete)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished)
-                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::confirmFiles)
+                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::confirmFiles, model::refreshFiles)
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                 }
                 BackHandler(enabled = screen == ui.screen && (ui.previewPath != null || screen == Screen.FILES &&
@@ -142,7 +143,9 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
                 } }
             }
             if (screen == Screen.HOME || screen == Screen.SETTINGS) RootTabs(screen, ui.screen == screen, model::navigate, page)
-            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: model.back() }) { page(screen) }
+            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: model.back() }, actions = {
+                if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
+            }) { page(screen) }
         }
     }
 }
@@ -179,9 +182,11 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
  * @param workspaceName 工程或预览文件名。
  * @param onBack 与系统返回共用导航栈。
  * @param showNavigation 一级分页内部由外层提供固定导航栏。
+ * @param actions 二级页面顶栏操作。
  */
 @Composable
-fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true, content: @Composable () -> Unit) {
+fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
+    actions: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
     val root = screen == Screen.HOME || screen == Screen.SETTINGS
     val title = when (screen) {
         Screen.HOME -> stringResource(R.string.app_name)
@@ -201,8 +206,9 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
                         ToolIcon(R.drawable.ic_tasks, description = stringResource(R.string.history))
                     }
                 })
-                else SmallTopAppBar(title = title, modifier = width, navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.padding(start = Theme.spacing.md).size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
+                else SmallTopAppBar(title = title, modifier = width, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
+                    actions = { actions() }, navigationIcon = {
+                    IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
                 })
             }
         }, bottomBar = {

@@ -14,6 +14,8 @@ import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
 import com.winter.godot.tool.feature.files.BrowserFile
 import com.winter.godot.tool.feature.files.FilePickerScreen
+import com.winter.godot.tool.feature.files.FileSortButton
+import com.winter.godot.tool.feature.files.sortBrowserFiles
 import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.settings.SettingsScreen
@@ -80,11 +82,19 @@ private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
  */
 @ScreenPreviews
 @Composable
-private fun FilesPreview() { GodotToolTheme { ToolScaffold(Screen.FILES) {
-    FilePickerScreen(ToolUiState(screen = Screen.FILES, browserPath = "/storage/emulated/0/Download",
+private fun FilesPreview() {
+    var state by remember { mutableStateOf(ToolUiState(screen = Screen.FILES, browserPath = "/storage/emulated/0/Download",
         browserFiles = listOf(BrowserFile("Projects", "/storage/emulated/0/Download/Projects", true, 0),
-            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140))), true, {}, {}, {})
-} } }
+            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140, 1795507200000)))) }
+    GodotToolTheme {
+        ToolScaffold(Screen.FILES, actions = {
+            FileSortButton(state.browserSort, state.browserReversed, state.browserDirectoryOnly, { order, reversed, directoryOnly ->
+                state = state.copy(browserSort = order, browserReversed = reversed, browserDirectoryOnly = directoryOnly,
+                    browserFiles = sortBrowserFiles(state.browserFiles, order, reversed))
+            })
+        }) { FilePickerScreen(state, true, {}, { state = state.copy(chosenFiles = setOf(it)) }, {}) }
+    }
+}
 
 /**
  * 工作区的四种设备与主题预览。

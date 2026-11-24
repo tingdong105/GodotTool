@@ -52,6 +52,15 @@
     <string name="scenes">场景</string>
     <string name="images">图片</string>
     <string name="select_file">选择文件</string>
+    <string name="sort_files">排序</string>
+    <string name="sort_by_name">按名称排序</string>
+    <string name="sort_by_modified">按时间排序</string>
+    <string name="sort_by_size">按大小排序</string>
+    <string name="sort_reversed">逆向排序</string>
+    <string name="sort_current_directory">仅作用于当前目录</string>
+    <string name="file_metadata">%1$s · %2$s</string>
+    <string name="unknown_update_time">更新时间未知</string>
+    <string name="empty_directory">目录为空</string>
     <string name="preview_empty">选择一个文件预览</string>
     <string name="preview_truncated">已显示文件开头部分</string>
     <string name="preview_binary">二进制预览</string>

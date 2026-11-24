@@ -70,6 +70,18 @@ class ToolRepository(private val context: Context) {
     }
 
     /**
+     * 读取上次确认文件所在的目录，由浏览器校验可访问性。
+     * @return 保存的目录，尚未确认时为空。
+     */
+    fun confirmedBrowserPath(): String = kv.decodeString("confirmed-browser-path").orEmpty()
+
+    /**
+     * 确认文件后持久保存已校验的父目录。
+     * @param path 共享存储中的规范目录。
+     */
+    fun rememberBrowserPath(path: String) { kv.encode("confirmed-browser-path", path) }
+
+    /**
      * 创建一个恢复任务。
      * @param draft 导入来源。
      * @param key 临时密钥。

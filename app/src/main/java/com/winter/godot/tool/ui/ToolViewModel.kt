@@ -16,8 +16,10 @@ import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
 import com.winter.godot.tool.feature.files.BrowserFile
+import com.winter.godot.tool.feature.files.BrowserSort
 import com.winter.godot.tool.feature.files.FileBrowser
 import com.winter.godot.tool.feature.files.StorageAccess
+import com.winter.godot.tool.feature.files.sortBrowserFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +44,10 @@ data class ToolUiState(
     val selection: RecoverySelection = RecoverySelection.scriptsOnly(),
     val browserPath: String = "",
     val browserFiles: List<BrowserFile> = emptyList(),
+    val browserSort: BrowserSort = BrowserSort.NAME,
+    val browserReversed: Boolean = false,
+    val browserDirectoryOnly: Boolean = false,
+    val browserRefreshing: Boolean = false,
     val chosenFiles: Set<String> = emptySet(),
     val inputFiles: Set<String> = emptySet(),
     val followsSettings: Boolean = true,
@@ -74,8 +80,14 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     val navEntries = navigation.entries
     val backStack = navigation.stack
     private val restoringTask = active.value != null || tasks.value.firstOrNull()?.acknowledged == false
+    private var defaultBrowserSort = BrowserSort.entries.firstOrNull { it.name == saved.get<String>("browserDefaultSort") }
+        ?: BrowserSort.entries.firstOrNull { it.name == saved.get<String>("browserSort") } ?: BrowserSort.NAME
+    private var defaultBrowserReversed = saved.get<Boolean>("browserDefaultReversed") ?: saved.get<Boolean>("browserReversed") ?: false
     private val mutableUi = MutableStateFlow(ToolUiState(screen = backStack.value.last(), selection = saved.restoreRecoverySelection(settings.value.selection),
         browserPath = saved.get<String>("browserPath").orEmpty(), chosenFiles = if (restoringTask) emptySet() else saved.get<ArrayList<String>>("chosenFiles").orEmpty().takeLast(1).toSet(),
+        browserSort = BrowserSort.entries.firstOrNull { it.name == saved.get<String>("browserSort") } ?: BrowserSort.NAME,
+        browserReversed = saved.get<Boolean>("browserReversed") ?: false,
+        browserDirectoryOnly = saved.get<Boolean>("browserDirectoryOnly") ?: false,
         inputFiles = if (restoringTask) emptySet() else saved.get<ArrayList<String>>("inputFiles").orEmpty().takeLast(1).toSet(),
         followsSettings = saved.get<Boolean>("followsSettings") ?: true,
         homeStep = restoreHomeStep(saved.get<Int>("homeStep") ?: 1, saved.get<ArrayList<String>>("inputFiles").orEmpty().isNotEmpty(),
@@ -93,7 +105,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         val id = saved.get<String>("workspaceId")
         if (backStack.value.last() == Screen.WORKSPACE) {
             if (id != null) openWorkspace(id) else navigate(Screen.HOME)
-        } else if (ui.value.screen == Screen.FILES) browseFiles(ui.value.browserPath)
+        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { repository.confirmedBrowserPath() }, restoring = true)
     }
 
     /**
@@ -110,12 +122,15 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      */
     private fun showScreen(screen: Screen) {
         if (screen != Screen.FILES) fileJob?.cancel()
+        if (screen != Screen.FILES && ui.value.browserDirectoryOnly) resetDirectorySort()
         if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
         mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) it.inputFiles else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
             workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
-            entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false) }
+            browserPath = if (screen == Screen.FILES) "" else it.browserPath,
+            browserFiles = if (screen == Screen.FILES) emptyList() else it.browserFiles,
+            entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false, browserRefreshing = false) }
         saved.saveRecoverySelection(ui.value.selection)
-        if (screen == Screen.FILES) browseFiles(ui.value.browserPath)
+        if (screen == Screen.FILES) readBrowser(repository.confirmedBrowserPath(), restoring = true)
     }
 
     /**
@@ -134,20 +149,83 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * 异步读取内置文件浏览器目录。
      * @param path 共享存储内的目录，空值使用根目录。
      */
-    fun browseFiles(path: String = "") {
+    fun browseFiles(path: String = "") { readBrowser(path) }
+
+    /**
+     * 下拉刷新当前目录，保留排序与选择并忽略重复请求。
+     */
+    fun refreshFiles() {
+        if (ui.value.screen != Screen.FILES || ui.value.loading || ui.value.browserPath.isEmpty()) return
+        readBrowser(ui.value.browserPath, refreshing = true)
+    }
+
+    /**
+     * 更新排序依据与逆向选项，在后台重新整理目录。
+     * @param order 排序依据。
+     * @param reversed 是否逆向排列。
+     * @param directoryOnly 是否只在当前目录生效。
+     */
+    fun sortFiles(order: BrowserSort, reversed: Boolean, directoryOnly: Boolean) {
+        val sortingChanged = ui.value.browserSort != order || ui.value.browserReversed != reversed
+        if (!sortingChanged && ui.value.browserDirectoryOnly == directoryOnly) return
+        if (!directoryOnly) {
+            defaultBrowserSort = order
+            defaultBrowserReversed = reversed
+        }
+        saved["browserDefaultSort"] = defaultBrowserSort.name
+        saved["browserDefaultReversed"] = defaultBrowserReversed
+        saved["browserSort"] = order.name
+        saved["browserReversed"] = reversed
+        saved["browserDirectoryOnly"] = directoryOnly
+        mutableUi.update { it.copy(browserSort = order, browserReversed = reversed, browserDirectoryOnly = directoryOnly) }
+        if (sortingChanged && ui.value.browserPath.isNotEmpty()) readBrowser(ui.value.browserPath)
+    }
+
+    /**
+     * 离开临时排序目录后恢复此前的通用排序。
+     */
+    private fun resetDirectorySort() {
+        saved["browserSort"] = defaultBrowserSort.name
+        saved["browserReversed"] = defaultBrowserReversed
+        saved["browserDirectoryOnly"] = false
+        mutableUi.update { it.copy(browserSort = defaultBrowserSort, browserReversed = defaultBrowserReversed, browserDirectoryOnly = false) }
+    }
+
+    /**
+     * 异步校验、读取与排序目录，恢复失效位置时回退内部存储。
+     * @param path 目标目录。
+     * @param restoring 是否允许恢复失败后回退根目录。
+     * @param refreshing 是否显示下拉刷新状态。
+     */
+    private fun readBrowser(path: String, restoring: Boolean = false, refreshing: Boolean = false) {
         val target = path.ifEmpty { StorageAccess.root().absolutePath }
-        mutableUi.update { it.copy(loading = true) }
+        val browserState = ui.value
+        val fallbackSort = defaultBrowserSort
+        val fallbackReversed = defaultBrowserReversed
+        mutableUi.update { it.copy(loading = true, browserRefreshing = refreshing) }
         fileJob?.cancel()
         fileJob = viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val browser = FileBrowser(StorageAccess.root())
-                    browser.checked(target).absolutePath to browser.list(target)
+                    val folder = try {
+                        browser.checked(target).also { if (restoring && !it.canRead()) error("Directory unavailable") }
+                    } catch (error: Exception) {
+                        if (restoring) StorageAccess.root() else throw error
+                    }
+                    val (actualPath, files) = try { folder.absolutePath to browser.list(folder.absolutePath) }
+                    catch (error: Exception) {
+                        if (restoring && folder != StorageAccess.root()) StorageAccess.root().absolutePath to browser.list(StorageAccess.root().absolutePath) else throw error
+                    }
+                    val leavingDirectory = browserState.browserDirectoryOnly && actualPath != browserState.browserPath
+                    actualPath to sortBrowserFiles(files, if (leavingDirectory) fallbackSort else browserState.browserSort,
+                        if (leavingDirectory) fallbackReversed else browserState.browserReversed)
                 }
-                mutableUi.update { it.copy(browserPath = result.first, browserFiles = result.second, loading = false) }
+                if (ui.value.browserDirectoryOnly && result.first != ui.value.browserPath) resetDirectorySort()
+                mutableUi.update { it.copy(browserPath = result.first, browserFiles = result.second, loading = false, browserRefreshing = false) }
                 saved["browserPath"] = result.first
             } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-            catch (error: Exception) { mutableUi.update { it.copy(loading = false) }; showError(R.string.error_read, error.message.orEmpty()) }
+            catch (error: Exception) { mutableUi.update { it.copy(loading = false, browserRefreshing = false) }; showError(R.string.error_read, error.message.orEmpty()) }
         }
     }
 
@@ -165,12 +243,27 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * 确认文件后返回首页配置步骤。
      */
     fun confirmFiles() {
-        if (active.value != null || ui.value.chosenFiles.size != 1) return
-        tasks.value.firstOrNull()?.let { repository.acknowledge(it.id) }
-        saved["inputFiles"] = ArrayList(ui.value.chosenFiles)
-        saved["homeStep"] = 2
-        mutableUi.update { it.copy(inputFiles = it.chosenFiles, homeStep = 2) }
-        navigate(Screen.HOME)
+        if (active.value != null || ui.value.loading || ui.value.chosenFiles.size != 1) return
+        val chosen = ui.value.chosenFiles.single()
+        mutableUi.update { it.copy(loading = true) }
+        fileJob = viewModelScope.launch {
+            try {
+                val folder = withContext(Dispatchers.IO) {
+                    val file = File(chosen)
+                    val parent = FileBrowser(StorageAccess.root()).checked(requireNotNull(file.parent))
+                    check(file.isFile && file.canRead()) { "Selected file unavailable" }
+                    parent.absolutePath
+                }
+                if (active.value != null) { mutableUi.update { it.copy(loading = false) }; return@launch }
+                repository.rememberBrowserPath(folder)
+                tasks.value.firstOrNull()?.let { repository.acknowledge(it.id) }
+                saved["inputFiles"] = arrayListOf(chosen)
+                saved["homeStep"] = 2
+                mutableUi.update { it.copy(inputFiles = setOf(chosen), homeStep = 2, loading = false) }
+                navigate(Screen.HOME)
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (error: Exception) { mutableUi.update { it.copy(loading = false) }; showError(R.string.error_read, error.message.orEmpty()) }
+        }
     }
 
     /**
