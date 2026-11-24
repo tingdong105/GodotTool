@@ -5,6 +5,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -55,6 +57,7 @@ object Theme {
     val spacing = ToolSpacing()
     val sizes = ToolSizes()
     val typography = ToolTypography()
+    val status = ToolStatusColors()
 }
 
 /**
@@ -75,4 +78,14 @@ fun GodotToolTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -
     }
     val density = LocalDensity.current.density
     CompositionLocalProvider(LocalDensity provides Density(density, 1f)) { MiuixTheme(colors = colors, content = content) }
+}
+
+/**
+ * 明暗主题下的日志语义颜色。
+ * @author Tingdong
+ * @date 2026-11-24
+ */
+class ToolStatusColors {
+    val success: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF76DBA0) else Color(0xFF238754)
+    val warning: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFEFBD68) else Color(0xFF946000)
 }

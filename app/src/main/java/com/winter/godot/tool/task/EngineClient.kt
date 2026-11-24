@@ -22,7 +22,6 @@ class EngineClient(private val context: Context, private val event: (JSONObject)
     private var remote: Messenger? = null
     private var bound = false
     private var pending: String? = null
-    private var cancelPending = false
     private val endpoint = Messenger(Handler(Looper.getMainLooper()) { message ->
         if (message.what == EngineProtocol.EVENT) {
             runCatching { JSONObject(message.data.getString(EngineProtocol.PAYLOAD).orEmpty()) }.onSuccess(event)
@@ -37,7 +36,6 @@ class EngineClient(private val context: Context, private val event: (JSONObject)
             remote = Messenger(service)
             send(EngineProtocol.SUBSCRIBE)
             pending?.let { send(EngineProtocol.START, it); pending = null }
-            if (cancelPending) { send(EngineProtocol.CANCEL); cancelPending = false }
         }
         /**
          * 核心进程退出后清理连接。
@@ -79,11 +77,6 @@ class EngineClient(private val context: Context, private val event: (JSONObject)
     }
 
     /**
-     * 请求取消当前任务。
-     */
-    fun cancel() { if (remote == null) cancelPending = true else send(EngineProtocol.CANCEL) }
-
-    /**
      * 向核心服务发送小型控制消息。
      * @param command 协议命令。
      * @param payload 可选 JSON 请求。
@@ -103,7 +96,6 @@ class EngineClient(private val context: Context, private val event: (JSONObject)
     private fun release() {
         remote = null
         pending = null
-        cancelPending = false
         if (bound) runCatching { context.unbindService(connection) }
         bound = false
     }

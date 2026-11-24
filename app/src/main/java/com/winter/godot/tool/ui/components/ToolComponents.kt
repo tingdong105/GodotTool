@@ -3,6 +3,10 @@ package com.winter.godot.tool.ui.components
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +14,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,17 +26,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import com.winter.godot.tool.R
-import com.winter.godot.tool.data.TaskLogLine
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.ui.theme.Theme
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -61,7 +62,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 fun ToolIcon(@DrawableRes resource: Int, modifier: Modifier = Modifier, description: String? = null) {
-    Icon(imageVector = toolIconVector(resource), contentDescription = description, modifier = modifier.size(Theme.sizes.icon))
+    Icon(imageVector = toolIconVector(resource), contentDescription = description, modifier = modifier.size(Theme.sizes.icon),
+        tint = if (resource == R.drawable.ic_android) Theme.status.success else LocalContentColor.current)
 }
 
 /**
@@ -83,40 +85,17 @@ fun toolIconVector(@DrawableRes resource: Int): ImageVector = when (resource) {
  * @param onClick 操作事件。
  * @param enabled 可用状态。
  * @param modifier 布局修饰。
+ * @param icon 可选前置图标。
  */
 @Composable
-fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    TextButton(text, onClick, modifier, enabled = enabled, colors = ButtonDefaults.textButtonColorsPrimary())
-}
-
-/**
- * 显示阶段百分比与自动滚动的处理日志。
- * @param task 正在运行的任务。
- * @param onCancel 取消事件。
- */
-@Composable
-fun TaskProgress(task: TaskRecord, onCancel: () -> Unit, logs: List<TaskLogLine> = emptyList()) {
-    val list = rememberLazyListState()
-    LaunchedEffect(logs.lastOrNull()) { if (logs.isNotEmpty()) list.scrollToItem(logs.lastIndex) }
-    val percent = when {
-        task.totalBytes > 0 -> (task.bytes.toDouble() / task.totalBytes * 100).toInt().coerceIn(0, 100)
-        task.totalFiles > 0 -> (task.files.toDouble() / task.totalFiles * 100).toInt().coerceIn(0, 100)
-        else -> null
-    }
-    Column(Modifier.fillMaxWidth().padding(horizontal = Theme.spacing.xl).padding(bottom = Theme.spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
-        Text(if (percent != null) stringResource(R.string.progress_percent, percent) else stringResource(R.string.progress_waiting), style = Theme.typography.number)
-        if (task.totalBytes > 0) {
-            Text(stringResource(R.string.progress_bytes, fileSize(task.bytes), fileSize(task.totalBytes)), style = Theme.typography.number)
-        }
-        if (task.totalFiles > 0) Text(stringResource(R.string.progress_files, task.files, task.totalFiles), style = Theme.typography.number)
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = Theme.sizes.browserWidth), state = list) {
-            items(logs) { line ->
-                Text(listOf(stringResource(stageResource(line.stage)), line.text).filter { it.isNotBlank() }.joinToString(" · "), style = Theme.typography.code)
-            }
-            if (logs.isEmpty()) item { Text(task.path.ifEmpty { stringResource(stageResource(task.stage)) }, style = Theme.typography.code) }
-        }
-        TextButton(stringResource(R.string.cancel), onCancel)
+fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: ImageVector? = null) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.65f, stiffness = 500f), label = "buttonPress")
+    Button(onClick, modifier.graphicsLayer { scaleX = scale; scaleY = scale }, enabled = enabled,
+        interactionSource = interaction, colors = ButtonDefaults.buttonColorsPrimary()) {
+        if (icon != null) Icon(icon, null, Modifier.padding(end = Theme.spacing.sm).size(Theme.spacing.lg))
+        Text(text, style = MiuixTheme.textStyles.button)
     }
 }
 
@@ -246,6 +225,7 @@ fun stageResource(stage: String): Int = when (stage) {
     "decrypt" -> R.string.stage_decrypt
     "extract" -> R.string.stage_extract
     "recover" -> R.string.stage_recover
+    "checkpoint" -> R.string.log_checkpoint
     "publish" -> R.string.stage_publish
     "assemble" -> R.string.stage_assemble
     "export" -> R.string.stage_export
@@ -260,6 +240,7 @@ fun stageResource(stage: String): Int = when (stage) {
  */
 @StringRes
 fun errorResource(code: String): Int = when (code) {
+    "SINGLE_INPUT_REQUIRED" -> R.string.single_file_only
     "BAD_KEY" -> R.string.error_bad_key
     "EMPTY_SELECTION" -> R.string.choose_recovery_content
     "NO_MATCHING_CONTENT" -> R.string.no_matching_content

@@ -8,7 +8,6 @@ package com.winter.godot.tool.task
 object EngineProtocol {
     const val START = 1
     const val SUBSCRIBE = 2
-    const val CANCEL = 3
     const val EVENT = 4
     const val PAYLOAD = "payload"
     const val TASK_ID = "taskId"

@@ -41,7 +41,14 @@ enum class TaskStatus { RUNNING, SUCCEEDED, PARTIAL, FAILED, CANCELED, INTERRUPT
  * @author Tingdong
  * @date 2026-11-24
  */
-data class TaskLogLine(val stage: String, val text: String)
+data class TaskLogLine(val stage: String, val text: String, val level: TaskLogLevel = TaskLogLevel.INFO)
+
+/**
+ * 面向用户的日志语义。
+ * @author Tingdong
+ * @date 2026-11-24
+ */
+enum class TaskLogLevel { INFO, ACCENT, SUCCESS, WARNING, ERROR }
 
 /**
  * MMKV 中的轻量任务摘要。
@@ -63,6 +70,9 @@ data class TaskRecord(
     val errorCode: String = "",
     val errorDetail: String = "",
     val summary: String = "{}",
+    val overallProgress: Float = 0f,
+    val selection: RecoverySelection? = null,
+    val acknowledged: Boolean = false,
 ) {
     /**
      * 将摘要序列化为可迁移的 JSON。
@@ -70,6 +80,7 @@ data class TaskRecord(
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("createdAt", createdAt).put("operation", operation)
         .put("status", status.name).put("stage", stage).put("path", path).put("bytes", bytes).put("totalBytes", totalBytes)
         .put("files", files).put("totalFiles", totalFiles).put("errorCode", errorCode).put("errorDetail", errorDetail).put("summary", summary)
+        .put("overallProgress", overallProgress).put("selection", selection?.toJson()).put("acknowledged", acknowledged)
 
     companion object {
         /**
@@ -80,10 +91,16 @@ data class TaskRecord(
         fun fromJson(json: JSONObject): TaskRecord {
             val id = json.getString("id")
             require(id.matches(Regex("[0-9a-f-]{36}")))
+            val status = TaskStatus.valueOf(json.getString("status"))
+            val summary = json.optString("summary", "{}")
+            val selection = json.optJSONObject("selection")
+                ?: runCatching { JSONObject(summary).optJSONObject("selection") }.getOrNull()
             return TaskRecord(id, json.optString("name").take(300), json.getLong("createdAt"), json.optString("operation", "recover"),
-                TaskStatus.valueOf(json.getString("status")), json.optString("stage", "import"), json.optString("path"),
+                status, json.optString("stage", "import"), json.optString("path"),
                 json.optLong("bytes").coerceAtLeast(0), json.optLong("totalBytes").coerceAtLeast(0), json.optInt("files").coerceAtLeast(0),
-                json.optInt("totalFiles").coerceAtLeast(0), json.optString("errorCode"), json.optString("errorDetail"), json.optString("summary", "{}"))
+                json.optInt("totalFiles").coerceAtLeast(0), json.optString("errorCode"), json.optString("errorDetail"), summary,
+                json.optDouble("overallProgress", if (json.optString("stage") == "done") 1.0 else 0.0).toFloat().coerceIn(0f, 1f),
+                selection?.let(::recoverySelectionFromJson), json.optBoolean("acknowledged", status != TaskStatus.RUNNING))
         }
     }
 }
@@ -115,12 +132,31 @@ data class ImportDraft(val name: String, val sources: List<JSONObject>, val sele
      * @param settings 恢复选项。
      * @param key 用户临时提供的密钥。
      * @return 内存请求。
+     * @throws IllegalArgumentException 输入不是单个文件。
      */
     fun request(id: String, settings: ToolSettings, key: String): JSONObject {
+        require(sources.size == 1) { "Exactly one input file is required" }
         val selected = selection ?: settings.selection
         return JSONObject().put("id", id).put("name", name)
             .put("operation", "recover").put("sources", JSONArray(sources)).put("scripts", selected.scripts || selected.plugins).put("scenes", selected.scenes).put("key", key)
-            .put("selection", JSONObject().put("scripts", selected.scripts).put("scenes", selected.scenes).put("assets", selected.assets)
-                .put("plugins", selected.plugins).put("config", selected.config).put("keepRaw", selected.keepRaw))
+            .put("selection", selected.toJson())
     }
 }
+
+/**
+ * 保存完整的六项任务配置。
+ * 使用示例：selection.toJson()。
+ * @return 不随应用设置变化的配置 JSON。
+ */
+internal fun RecoverySelection.toJson(): JSONObject = JSONObject().put("scripts", scripts).put("scenes", scenes)
+    .put("assets", assets).put("plugins", plugins).put("config", config).put("keepRaw", keepRaw)
+
+/**
+ * 读取请求或历史任务中的实际配置。
+ * 使用示例：recoverySelectionFromJson(request.getJSONObject("selection"))。
+ * @param json 六项配置，缺省值兼容旧请求。
+ * @return 任务配置快照。
+ */
+internal fun recoverySelectionFromJson(json: JSONObject): RecoverySelection = RecoverySelection(
+    json.optBoolean("scripts", true), json.optBoolean("scenes", true), json.optBoolean("assets", true),
+    json.optBoolean("plugins", true), json.optBoolean("config", true), json.optBoolean("keepRaw", false))

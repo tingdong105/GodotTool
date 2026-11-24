@@ -43,6 +43,9 @@ data class ToolUiState(
     val browserPath: String = "",
     val browserFiles: List<BrowserFile> = emptyList(),
     val chosenFiles: Set<String> = emptySet(),
+    val inputFiles: Set<String> = emptySet(),
+    val followsSettings: Boolean = true,
+    val homeStep: Int = 1,
     val loading: Boolean = false,
     val workspaceId: String? = null,
     val entries: List<WorkspaceEntry> = emptyList(),
@@ -70,13 +73,23 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     private val navigation = ToolNavigation(saved)
     val navEntries = navigation.entries
     val backStack = navigation.stack
+    private val restoringTask = active.value != null || tasks.value.firstOrNull()?.acknowledged == false
     private val mutableUi = MutableStateFlow(ToolUiState(screen = backStack.value.last(), selection = saved.restoreRecoverySelection(settings.value.selection),
-        browserPath = saved.get<String>("browserPath").orEmpty(), chosenFiles = saved.get<ArrayList<String>>("chosenFiles").orEmpty().take(128).toSet()))
+        browserPath = saved.get<String>("browserPath").orEmpty(), chosenFiles = if (restoringTask) emptySet() else saved.get<ArrayList<String>>("chosenFiles").orEmpty().takeLast(1).toSet(),
+        inputFiles = if (restoringTask) emptySet() else saved.get<ArrayList<String>>("inputFiles").orEmpty().takeLast(1).toSet(),
+        followsSettings = saved.get<Boolean>("followsSettings") ?: true,
+        homeStep = restoreHomeStep(saved.get<Int>("homeStep") ?: 1, saved.get<ArrayList<String>>("inputFiles").orEmpty().isNotEmpty(),
+            active.value != null, tasks.value.firstOrNull())))
     val ui = mutableUi.asStateFlow()
     private var previewJob: Job? = null
     private var fileJob: Job? = null
 
     init {
+        saved["homeStep"] = ui.value.homeStep
+        if (restoringTask) {
+            saved["inputFiles"] = arrayListOf<String>()
+            saved["chosenFiles"] = arrayListOf<String>()
+        }
         val id = saved.get<String>("workspaceId")
         if (backStack.value.last() == Screen.WORKSPACE) {
             if (id != null) openWorkspace(id) else navigate(Screen.HOME)
@@ -98,7 +111,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     private fun showScreen(screen: Screen) {
         if (screen != Screen.FILES) fileJob?.cancel()
         if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
-        mutableUi.update { it.copy(screen = screen, selection = if (screen == Screen.FILES) settings.value.selection else it.selection, previewPath = null, previewText = "", previewImage = null, notice = null,
+        mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) it.inputFiles else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
             workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
             entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false) }
         saved.saveRecoverySelection(ui.value.selection)
@@ -139,27 +152,75 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     }
 
     /**
-     * 在内置浏览器中选择输入，可同时选择 APK 分包。
+     * 选择唯一输入，重新选择时替换原文件。
      * @param path 已校验的输入路径。
      */
     fun chooseFile(path: String) {
-        mutableUi.update { state ->
-            state.copy(chosenFiles = if (path in state.chosenFiles) state.chosenFiles - path else (state.chosenFiles + path).take(128).toSet())
-        }
+        if (active.value != null) return
+        mutableUi.update { it.copy(chosenFiles = setOf(path)) }
         saved["chosenFiles"] = ArrayList(ui.value.chosenFiles)
     }
 
     /**
-     * 将所选文件交给后台恢复，NM 密钥由适配器自动识别。
+     * 确认文件后返回首页配置步骤。
+     */
+    fun confirmFiles() {
+        if (active.value != null || ui.value.chosenFiles.size != 1) return
+        tasks.value.firstOrNull()?.let { repository.acknowledge(it.id) }
+        saved["inputFiles"] = ArrayList(ui.value.chosenFiles)
+        saved["homeStep"] = 2
+        mutableUi.update { it.copy(inputFiles = it.chosenFiles, homeStep = 2) }
+        navigate(Screen.HOME)
+    }
+
+    /**
+     * 切换首页中可编辑的步骤。
+     * @param step 已满足前置条件的步骤。
+     */
+    fun selectHomeStep(step: Int) {
+        if (active.value != null || step !in 1..3 || step > 1 && ui.value.inputFiles.size != 1) return
+        val selection = if (ui.value.followsSettings) settings.value.selection else ui.value.selection
+        if (step == 3 && !selection.hasContent) return
+        saved["homeStep"] = step
+        mutableUi.update { it.copy(homeStep = step) }
+    }
+
+    /**
+     * 选择默认配置，开始时读取最新设置。
+     * @param follow 是否跟随应用设置。
+     */
+    fun followSettings(follow: Boolean) {
+        if (active.value != null || follow == ui.value.followsSettings) return
+        saved["followsSettings"] = follow
+        if (!follow) editSelection(settings.value.selection)
+        mutableUi.update { it.copy(followsSettings = follow) }
+    }
+
+    /**
+     * 使用首页确认的文件与配置启动后台任务。
      */
     fun recoverChosen() {
-        if (active.value != null || ui.value.chosenFiles.isEmpty() || !ui.value.selection.hasContent) return
-        val files = ui.value.chosenFiles.toList()
-        val sources = files.map { JSONObject().put("file", it).put("name", File(it).name) }
-        repository.start(ImportDraft(File(files.first()).name, sources, ui.value.selection), "")
-        mutableUi.update { it.copy(chosenFiles = emptySet()) }
+        val selection = if (ui.value.followsSettings) settings.value.selection else ui.value.selection
+        if (active.value != null || ui.value.inputFiles.size != 1 || !selection.hasContent) return
+        val file = File(ui.value.inputFiles.single())
+        val source = JSONObject().put("file", file.absolutePath).put("name", file.name)
+        repository.start(ImportDraft(file.name, listOf(source), selection), "")
+        mutableUi.update { it.copy(chosenFiles = emptySet(), inputFiles = emptySet(), homeStep = 3) }
         saved["chosenFiles"] = arrayListOf<String>()
+        saved["inputFiles"] = arrayListOf<String>()
+        saved["homeStep"] = 3
         navigate(Screen.HOME)
+    }
+
+    /**
+     * 完成后开始新一轮文件选择。
+     */
+    fun newRecovery() {
+        if (active.value != null) return
+        tasks.value.firstOrNull()?.let { repository.acknowledge(it.id) }
+        saved["homeStep"] = 1
+        saved["followsSettings"] = true
+        mutableUi.update { it.copy(homeStep = 1, followsSettings = true) }
     }
 
     /**
@@ -176,11 +237,6 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * @param value 新设置。
      */
     fun updateSettings(value: ToolSettings) = repository.updateSettings(value)
-
-    /**
-     * 取消当前恢复或导出任务。
-     */
-    fun cancel() = repository.cancel()
 
     /**
      * 读取可用的工作区文件索引。
@@ -269,8 +325,16 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         viewModelScope.launch {
             runCatching {
                 val draft = repository.retryDraft(task.id)
-                if (!(draft.selection ?: settings.value.selection).hasContent) { showError(R.string.choose_recovery_content); return@launch }
-                repository.start(draft, "")
+                if (draft.sources.size != 1) { showError(R.string.single_file_only); return@launch }
+                val selection = draft.selection ?: settings.value.selection
+                if (!selection.hasContent) { showError(R.string.choose_recovery_content); return@launch }
+                repository.start(draft.copy(selection = selection), "")
+                saved["homeStep"] = 3
+                saved["followsSettings"] = false
+                saved.saveRecoverySelection(selection)
+                mutableUi.update { it.copy(homeStep = 3, inputFiles = emptySet(), chosenFiles = emptySet(), selection = selection, followsSettings = false) }
+                saved["inputFiles"] = arrayListOf<String>()
+                saved["chosenFiles"] = arrayListOf<String>()
                 navigate(Screen.HOME)
             }.onFailure { showError(R.string.error_retry, it.message.orEmpty()) }
         }

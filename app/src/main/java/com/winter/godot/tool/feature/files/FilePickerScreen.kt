@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -17,13 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
-import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
-import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.FileSearch
@@ -35,18 +32,18 @@ import com.winter.godot.tool.ui.components.fileSize
 import com.winter.godot.tool.ui.theme.Theme
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.RadioButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 
 /**
  * 浏览共享存储，目录与文件共用连续滚动列表。
- * @param onChoose 切换所选文件或 APK 分包。
- * @param onSelection 修改本次解包选项。
- * @param onStart 使用当前选项开始解包。
+ * @param onChoose 将单选输入切换为当前文件。
+ * @param onConfirm 确认文件并返回首页配置。
  */
 @Composable
-fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) -> Unit, onChoose: (String) -> Unit,
-    onSelection: (RecoverySelection) -> Unit, onStart: () -> Unit) {
+fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) -> Unit, onChoose: (String) -> Unit, onConfirm: () -> Unit) {
     var search by rememberSaveable(state.browserPath) { mutableStateOf("") }
     val root = StorageAccess.root().absolutePath
     val relative = state.browserPath.removePrefix(root).trim('/')
@@ -60,15 +57,15 @@ fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) ->
                 files.isEmpty() -> EmptyContent(stringResource(R.string.no_results))
                 else -> Card {
                     key(state.browserPath, search) {
-                        LazyColumn {
+                        LazyColumn(Modifier.selectableGroup()) {
                             items(files, key = { it.path }) { entry ->
                                 if (entry.directory) ArrowPreference(title = entry.name, startAction = { ToolIcon(R.drawable.ic_folder, Modifier.padding(end = Theme.spacing.md)) },
                                     onClick = { onBrowse(entry.path) })
-                                else BasicComponent(title = entry.name, summary = fileSize(entry.size),
-                                    modifier = Modifier.semantics { role = Role.Checkbox; toggleableState = ToggleableState(entry.path in state.chosenFiles) },
-                                    startAction = { ToolIcon(R.drawable.ic_file, Modifier.padding(end = Theme.spacing.md)) },
+                                else BasicComponent(title = entry.name, summary = fileSize(entry.size), enabled = enabled, role = Role.RadioButton,
+                                    modifier = Modifier.semantics { selected = entry.path in state.chosenFiles },
+                                    startAction = { ToolIcon(if (entry.name.endsWith(".apk", ignoreCase = true)) R.drawable.ic_android else R.drawable.ic_file, Modifier.padding(end = Theme.spacing.md)) },
                                     onClick = { onChoose(entry.path) }, endActions = {
-                                        Checkbox(ToggleableState(entry.path in state.chosenFiles), onClick = null)
+                                        RadioButton(selected = entry.path in state.chosenFiles, onClick = null, enabled = enabled)
                                     })
                             }
                         }
@@ -76,10 +73,8 @@ fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) ->
                 }
             }
         }
-        SectionTitle(stringResource(R.string.recovery_content))
-        RecoveryOptions(state.selection, onSelection, enabled)
-        PrimaryButton(if (state.chosenFiles.isEmpty()) stringResource(R.string.start_recovery) else stringResource(R.string.start_selected, state.chosenFiles.size),
-            onStart, Modifier.fillMaxWidth().padding(vertical = Theme.spacing.md),
-            enabled = enabled && state.chosenFiles.isNotEmpty() && state.selection.hasContent && !state.loading)
+        PrimaryButton(stringResource(R.string.confirm_file),
+            onConfirm, Modifier.fillMaxWidth().padding(vertical = Theme.spacing.md),
+            enabled = enabled && state.chosenFiles.size == 1 && !state.loading, icon = MiuixIcons.Basic.Check)
     }
 }

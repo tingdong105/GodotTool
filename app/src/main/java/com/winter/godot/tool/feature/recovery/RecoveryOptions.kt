@@ -1,6 +1,7 @@
 package com.winter.godot.tool.feature.recovery
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,6 +15,7 @@ import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
 import com.winter.godot.tool.ui.theme.Theme
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -40,9 +42,12 @@ fun recoveryMode(value: RecoverySelection): Int = when (value.copy(keepRaw = fal
  * @param value 当前选项。
  * @param onChange 即时更新所选内容。
  * @param enabled 是否允许修改。
+ * @param embedded 在步骤卡片内部省略外层卡片。
+ * @param insideMargin 配置行的内容边距。
  */
 @Composable
-fun RecoveryOptions(value: RecoverySelection, onChange: (RecoverySelection) -> Unit, enabled: Boolean = true) {
+fun RecoveryOptions(value: RecoverySelection, onChange: (RecoverySelection) -> Unit, enabled: Boolean = true, embedded: Boolean = false,
+    insideMargin: PaddingValues = BasicComponentDefaults.InsideMargin) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var customMode by rememberSaveable { mutableStateOf(false) }
     val mode = if (customMode) R.string.custom_mode else recoveryMode(value)
@@ -65,9 +70,9 @@ fun RecoveryOptions(value: RecoverySelection, onChange: (RecoverySelection) -> U
             onClick = { customMode = false; expanded = false; onChange(RecoverySelection.scriptsOnly().copy(keepRaw = value.keepRaw)) }),
         DropdownItem(stringResource(R.string.custom_mode), selected = mode == R.string.custom_mode, children = categories),
     )))
-    Card {
+    val content: @Composable () -> Unit = {
         Box {
-            BasicComponent(title = stringResource(R.string.recovery_mode), enabled = enabled, role = Role.DropdownList,
+            BasicComponent(title = stringResource(R.string.recovery_mode), enabled = enabled, role = Role.DropdownList, insideMargin = insideMargin,
                 holdDownState = expanded, onClick = { expanded = true }, endActions = {
                     Text(stringResource(mode), modifier = Modifier.padding(end = Theme.spacing.sm),
                         style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantActions)
@@ -77,6 +82,7 @@ fun RecoveryOptions(value: RecoverySelection, onChange: (RecoverySelection) -> U
                 onDismissRequest = { expanded = false }, collapseOnSelection = false)
         }
         SwitchPreference(value.keepRaw, { onChange(value.copy(keepRaw = it)) },
-            stringResource(R.string.keep_raw), enabled = enabled)
+            stringResource(R.string.keep_raw), enabled = enabled, insideMargin = insideMargin)
     }
+    if (embedded) content() else Card { content() }
 }

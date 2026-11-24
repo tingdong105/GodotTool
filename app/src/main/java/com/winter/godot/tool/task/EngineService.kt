@@ -37,12 +37,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -61,6 +59,7 @@ class EngineService : Service() {
     @Volatile private var lastEvent: String = ""
     private var lastProgress = 0L
     private var lastNotification = 0L
+    private var overall = 0f
     private var started = false
     private var selection = RecoverySelection()
     private var selectionJson = JSONObject()
@@ -88,7 +87,6 @@ class EngineService : Service() {
                     } catch (error: Throwable) { fail(error) }
                 }
             }
-            EngineProtocol.CANCEL -> cancelTask("CANCELED")
         }
         true
     })
@@ -103,10 +101,9 @@ class EngineService : Service() {
     }
 
     /**
-     * 启动前台通知并处理通知栏取消。
+     * 启动持续显示的前台进度通知。
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "cancel") { cancelTask("CANCELED"); return START_NOT_STICKY }
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
         ServiceCompat.startForeground(this, 10, notification(getString(R.string.stage_prepare)), type)
         main.postDelayed({ if (!started) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() } }, 15000)
@@ -153,9 +150,9 @@ class EngineService : Service() {
                 val packageName = inputs.asSequence().filter { it.extension == "apk" }
                     .mapNotNull { packageManager.getPackageArchiveInfo(it.absolutePath, 0)?.packageName }
                     .firstOrNull { it == NodeMotionAdapter.PACKAGE_NAME }
-                if (packageName != null) progress(CoreProgress("probe", getString(R.string.cnm_detected)))
                 nm = NodeMotionAdapter.probe(archives, ::checkCanceled, packageName)
                 if (nm) {
+                    emit(JSONObject().put("type", "mode").put("mode", "CNM"))
                     val entries = NodeMotionAdapter.extract(archives, File(directory, "raw"), ::checkCanceled, ::progress, selection::needsForRecovery, ensureVersionProbe = true)
                     nmResources = entries.size
                     val index = JSONArray()
@@ -177,7 +174,7 @@ class EngineService : Service() {
                         File(workDirectory, "result.json").writeText(pending.getJSONObject("summary").toString(2))
                         File(workDirectory, "recovery-report.txt").writeText("CNM: resources decrypted and MD5 verified. Script recovery is pending.\n")
                     }
-                    outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, ::progress, outputArchive)
+                    outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, { value -> progress(value.copy(stage = "checkpoint")) }, outputArchive)
                 }
             }
         }
@@ -187,7 +184,6 @@ class EngineService : Service() {
             .put("availableBytes", workDirectory.usableSpace)
             .put("selection", selectionJson)
         checkCanceled()
-        streamEngineLog(workDirectory)
         GdreRunner(this).start(job.toString(), canceled, { payload ->
             try {
                 val event = JSONObject(payload)
@@ -249,7 +245,7 @@ class EngineService : Service() {
      */
     private fun stageInputs(request: JSONObject, directory: File): List<File> {
         val sources = request.getJSONArray("sources")
-        if (sources.length() !in 1..128) throw CoreFailure("BAD_REQUEST", "Input count must be 1..128")
+        if (sources.length() != 1) throw CoreFailure("SINGLE_INPUT_REQUIRED", "Exactly one input file is required")
         val inputDirectory = File(directory, "input").apply { mkdirs() }
         val manifest = JSONArray()
         val inputs = List(sources.length()) { i ->
@@ -309,6 +305,8 @@ class EngineService : Service() {
         if (terminal.get()) return
         event.put("id", taskId)
         if (event.optString("type") == "progress") {
+            overall = overallProgress(overall, event)
+            event.put("overallProgress", overall)
             currentStage = event.optString("stage", currentStage)
             currentPath = event.optString("path")
         }
@@ -383,39 +381,6 @@ class EngineService : Service() {
     }
 
     /**
-     * 将引擎输出增量送到首页，单次消息保持有界。
-     * @param directory 私有任务目录。
-     */
-    private fun streamEngineLog(directory: File) {
-        scope.launch {
-            var offset = 0L
-            var pending = ""
-            while (!terminal.get() && !canceled.get()) {
-                delay(500)
-                val file = File(directory, "engine.log")
-                if (!file.isFile) continue
-                runCatching {
-                    val lines = JSONArray()
-                    RandomAccessFile(file, "r").use { input ->
-                        if (offset > input.length()) offset = 0
-                        input.seek(offset)
-                        val bytes = ByteArray(8192)
-                        val count = input.read(bytes)
-                        if (count > 0) {
-                            val text = pending + String(bytes, 0, count, Charsets.UTF_8)
-                            val parts = text.split('\n')
-                            parts.dropLast(1).takeLast(20).forEach { lines.put(it.take(1000)) }
-                            pending = parts.last().takeLast(1000)
-                        }
-                        offset = input.filePointer
-                    }
-                    if (lines.length() > 0) emit(JSONObject().put("type", "log").put("lines", lines))
-                }
-            }
-        }
-    }
-
-    /**
      * 取消任务并终止正在执行的原生调用。
      * @param code 取消或超时原因。
      */
@@ -435,14 +400,13 @@ class EngineService : Service() {
     }
 
     /**
-     * 构造包含取消入口的前台通知。
+     * 构造持续处理的前台通知。
      * @param text 当前状态。
      * @return 前台通知。
      */
     private fun notification(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val cancel = PendingIntent.getService(this, 1, Intent(this, EngineService::class.java).setAction("cancel"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, "extraction").setSmallIcon(R.drawable.ic_task_notification).setContentTitle(getString(R.string.app_name))
-            .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).addAction(0, getString(R.string.cancel), cancel).build()
+            .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).build()
     }
 }

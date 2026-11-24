@@ -13,3 +13,6 @@
 
 # Capstone JNI 通过固定类名与方法名调用。
 -keep class com.winter.godot.tool.feature.CNM.CapstoneLocator { *; }
+
+# Lottie 间接依赖的 Okio 仅用此注解标记可空类型。
+-dontwarn javax.annotation.Nullable

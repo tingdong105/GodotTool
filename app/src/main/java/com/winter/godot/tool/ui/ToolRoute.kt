@@ -112,22 +112,25 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
             val page: @Composable (Screen) -> Unit = { destination ->
                 when (destination) {
-                    Screen.HOME -> HomeScreen(tasks.firstOrNull { it.id == active } ?: tasks.firstOrNull(), active != null,
-                        { model.navigate(Screen.HOME); requestFiles() },
+                    Screen.HOME -> HomeScreen(pageUi, settings, tasks.firstOrNull { it.id == active } ?: tasks.firstOrNull(), active != null,
+                        model::selectHomeStep, { model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
+                        {
+                            if (StorageAccess.granted(context)) {
+                                if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                model.recoverChosen()
+                            } else requestFiles()
+                        }, model::newRecovery,
                         { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
-                        { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, model::cancel, logs)
-                    Screen.TASKS -> TasksScreen(tasks, active, model::cancel, model::openWorkspace, model::retry, model::delete)
+                        { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, logs)
+                    Screen.TASKS -> TasksScreen(tasks, active, model::openWorkspace, model::retry, model::delete)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished)
-                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::editSelection) {
-                        if (StorageAccess.granted(context)) {
-                            if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            model.recoverChosen()
-                        } else requestFiles()
-                    }
+                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::confirmFiles)
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                 }
                 BackHandler(enabled = screen == ui.screen && (ui.previewPath != null || screen == Screen.FILES &&
                     ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath), onBack = model::back)
+                BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
+                    ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
                 if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false }) {
                     Text(stringResource(R.string.storage_permission_detail))
                     PrimaryButton(stringResource(R.string.authorize), { permissionExplanation = false; requestFiles() }, Modifier.fillMaxWidth())
@@ -194,7 +197,7 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Scaffold(modifier = Modifier.fillMaxSize().imePadding().then(if (root) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier), topBar = {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                 if (root) TopAppBar(title, modifier = width, scrollBehavior = scroll, actions = {
-                    if (screen == Screen.HOME) IconButton(onClick = { onNavigate(Screen.TASKS) }, modifier = Modifier.padding(end = Theme.spacing.md).size(Theme.sizes.largeIcon)) {
+                    if (screen == Screen.HOME) IconButton(onClick = { onNavigate(Screen.TASKS) }, modifier = Modifier.size(Theme.sizes.largeIcon)) {
                         ToolIcon(R.drawable.ic_tasks, description = stringResource(R.string.history))
                     }
                 })

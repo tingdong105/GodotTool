@@ -93,15 +93,16 @@ tasks.configureEach {
 }
 
 dependencies {
-    // Godot解包核心
+    // Godot 解包核心
     implementation(project(":gdre-core"))
-    // miuix 组件库
+    // Miuix 组件库
     implementation(libs.miuix)
-    implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
-    // miuix 独立导航
     implementation(libs.miuix.nav)
-    // mmkv持久化
+    implementation(libs.miuix.preference)
+    // Lottie 动画
+    implementation(libs.lottie.compose)
+    // MMKV 持久化
     implementation(libs.mmkv)
     // 可取消的后台工作与生命周期状态收集。
     implementation(libs.kotlinx.coroutines.android)
@@ -117,7 +118,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-
     // Android Studio 界面预览工具。
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

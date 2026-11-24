@@ -3,7 +3,9 @@ package com.winter.godot.tool.data
 import android.content.Context
 import com.tencent.mmkv.MMKV
 import com.winter.godot.core.model.RecoverySelection
+import com.winter.godot.tool.R
 import com.winter.godot.tool.task.EngineClient
+import com.winter.godot.tool.ui.components.errorResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +24,7 @@ import java.util.UUID
  * @author Tingdong
  * @date 2026-11-21
  */
-class ToolRepository(context: Context) {
+class ToolRepository(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val kv = MMKV.mmkvWithID("godottool-settings-v1", MMKV.SINGLE_PROCESS_MODE)
     val workspaces = WorkspaceStore(context)
@@ -41,6 +43,13 @@ class ToolRepository(context: Context) {
         val running = mutableTasks.value.firstOrNull { it.status == TaskStatus.RUNNING }
         if (running != null) {
             mutableActive.value = running.id
+            if (running.selection == null) scope.launch {
+                val selection = withContext(Dispatchers.IO) { readSelection(running.id) }
+                if (selection != null) {
+                    mutableTasks.update { records -> records.map { if (it.id == running.id && it.selection == null) it.copy(selection = selection) else it } }
+                    persistTasks()
+                }
+            }
             if (!client.reconnect()) onDisconnected()
         }
     }
@@ -68,14 +77,20 @@ class ToolRepository(context: Context) {
      */
     fun start(draft: ImportDraft, key: String): String {
         val id = UUID.randomUUID().toString()
-        launchTask(TaskRecord(id, draft.name), draft.request(id, settings.value, key))
+        val request = draft.request(id, settings.value, key)
+        launchTask(TaskRecord(id, draft.name, selection = recoverySelectionFromJson(request.getJSONObject("selection"))), request)
         return id
     }
 
     /**
-     * 请求终止当前后台任务。
+     * 确认已结束的任务结果。
+     * @param id 用户已查看或离开的任务。
      */
-    fun cancel() { client.cancel() }
+    fun acknowledge(id: String) {
+        if (active.value == id || tasks.value.none { it.id == id && !it.acknowledged && it.status != TaskStatus.RUNNING }) return
+        mutableTasks.update { records -> records.map { if (it.id == id) it.copy(acknowledged = true) else it } }
+        persistTasks()
+    }
 
     /**
      * 清理明确指定且未运行的工作区。
@@ -113,13 +128,19 @@ class ToolRepository(context: Context) {
             val input = workspaces.file(id, source.getString("local"))
             JSONObject().put("file", input.absolutePath).put("name", source.getString("name"))
         }
-        val options = java.io.File(workspaces.directory(id), "request-options.json")
-        val selection = if (options.isFile && options.length() in 1..8192) JSONObject(options.readText()).let {
-            RecoverySelection(it.optBoolean("scripts", true), it.optBoolean("scenes", true), it.optBoolean("assets", true),
-                it.optBoolean("plugins", true), it.optBoolean("config", true), it.optBoolean("keepRaw", false))
-        } else null
-        ImportDraft(tasks.value.first { it.id == id }.name, sources, selection)
+        val task = tasks.value.first { it.id == id }
+        ImportDraft(task.name, sources, task.selection ?: readSelection(id))
     }
+
+    /**
+     * 从私有请求记录补齐旧任务的配置。
+     * @param id 工作区任务标识。
+     * @return 可用的任务配置，缺失或损坏时为空。
+     */
+    private fun readSelection(id: String): RecoverySelection? = runCatching {
+        val options = java.io.File(workspaces.directory(id), "request-options.json")
+        if (options.isFile && options.length() in 1..8192) recoverySelectionFromJson(JSONObject(options.readText())) else null
+    }.getOrNull()
 
     /**
      * 注册摘要后发送任务，重复触发由活动标识互斥。
@@ -129,13 +150,14 @@ class ToolRepository(context: Context) {
     private fun launchTask(record: TaskRecord, request: JSONObject) {
         check(active.value == null) { "Task already running" }
         mutableActive.value = record.id
-        mutableLogs.value = emptyList()
-        mutableTasks.update { listOf(record) + it }
+        mutableLogs.value = listOf(TaskLogLine("import", context.getString(R.string.log_import)))
+        mutableTasks.update { records -> listOf(record) + records.map { if (!it.acknowledged) it.copy(acknowledged = true) else it } }
         persistTasks()
         try { client.start(request) }
         catch (error: Throwable) {
             mutableActive.value = null
             replace(record.copy(status = TaskStatus.FAILED, errorCode = "SERVICE_START", errorDetail = error.message.orEmpty()))
+            appendLog(TaskLogLine("error", context.getString(R.string.error_service), TaskLogLevel.ERROR))
             persistTasks()
         }
     }
@@ -150,22 +172,38 @@ class ToolRepository(context: Context) {
         if (current.status != TaskStatus.RUNNING) return
         when (event.optString("type")) {
             "progress" -> {
-                val line = TaskLogLine(event.optString("stage", current.stage), event.optString("path"))
-                if (mutableLogs.value.lastOrNull() != line) mutableLogs.update { (it + line).takeLast(300) }
-                replace(current.copy(stage = event.optString("stage", current.stage), path = event.optString("path"), bytes = event.optLong("bytes"),
-                    totalBytes = event.optLong("totalBytes"), files = event.optInt("files"), totalFiles = event.optInt("totalFiles")))
+                val stage = event.optString("stage", current.stage)
+                val message = when (stage) {
+                    "import" -> R.string.log_import
+                    "probe", "decrypt" -> R.string.log_prepare
+                    "extract" -> R.string.log_extract
+                    "checkpoint" -> R.string.log_checkpoint
+                    "recover" -> R.string.log_recover
+                    "assemble" -> R.string.log_assemble
+                    "publish", "export" -> R.string.log_publish
+                    else -> null
+                }
+                if (message != null) {
+                    val line = TaskLogLine(stage, context.getString(message))
+                    if (mutableLogs.value.none { it.text == line.text }) appendLog(line)
+                }
+                replace(current.copy(stage = stage, path = event.optString("path"), bytes = event.optLong("bytes"),
+                    totalBytes = event.optLong("totalBytes"), files = event.optInt("files"), totalFiles = event.optInt("totalFiles"),
+                    overallProgress = maxOf(current.overallProgress, event.optDouble("overallProgress", current.overallProgress.toDouble()).toFloat()).coerceIn(0f, 0.99f)))
                 if (System.currentTimeMillis() - persistedAt > 1500) persistTasks()
             }
-            "log" -> {
-                val lines = event.optJSONArray("lines") ?: return
-                val next = List(minOf(lines.length(), 20)) { TaskLogLine(current.stage, lines.optString(it).take(1000)) }
-                mutableLogs.update { (it + next).takeLast(300) }
+            "mode" -> if (event.optString("mode") == "CNM") {
+                val line = TaskLogLine("mode", context.getString(R.string.cnm_detected), TaskLogLevel.ACCENT)
+                if (line !in mutableLogs.value) appendLog(line)
             }
             "result" -> {
                 val summary = event.optJSONObject("summary") ?: JSONObject()
                 val partial = summary.has("warning") || summary.optInt("failedScripts") > 0 || summary.optInt("failedConversions") > 0
                 // 先保存完成事件，索引可在下次打开工作区时重建。
-                replace(current.copy(status = if (partial) TaskStatus.PARTIAL else TaskStatus.SUCCEEDED, stage = "done", summary = summary.toString(), path = ""))
+                replace(current.copy(status = if (partial) TaskStatus.PARTIAL else TaskStatus.SUCCEEDED, stage = "done", summary = summary.toString(), path = "", overallProgress = 1f,
+                    selection = current.selection ?: summary.optJSONObject("selection")?.let(::recoverySelectionFromJson)))
+                appendLog(TaskLogLine("done", context.getString(if (partial) R.string.log_partial else R.string.log_complete),
+                    if (partial) TaskLogLevel.WARNING else TaskLogLevel.SUCCESS))
                 persistTasks()
                 if (current.operation == "recover") scope.launch {
                     runCatching { withContext(Dispatchers.IO) { workspaces.index(id) } }.onFailure { error ->
@@ -177,6 +215,7 @@ class ToolRepository(context: Context) {
             }
             "error" -> {
                 val code = event.optString("code", "IO_FAILED")
+                appendLog(TaskLogLine("error", context.getString(errorResource(code)), TaskLogLevel.ERROR))
                 val summary = event.optJSONObject("summary")
                 replace(current.copy(status = when {
                     code == "CANCELED" -> TaskStatus.CANCELED
@@ -200,10 +239,19 @@ class ToolRepository(context: Context) {
             val current = tasks.value.firstOrNull { it.id == id }
             if (current?.status == TaskStatus.RUNNING) {
                 replace(current.copy(status = TaskStatus.INTERRUPTED, errorCode = "ENGINE_EXIT"))
+                appendLog(TaskLogLine("error", context.getString(R.string.error_engine), TaskLogLevel.ERROR))
                 persistTasks()
             }
             mutableActive.value = null
         }
+    }
+
+    /**
+     * 保留有界且去重的用户日志。
+     * @param line 已本地化的关键状态。
+     */
+    private fun appendLog(line: TaskLogLine) {
+        mutableLogs.update { if (it.lastOrNull() == line) it else (it + line).takeLast(100) }
     }
 
     /**

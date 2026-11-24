@@ -43,7 +43,7 @@ private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "No
  */
 @ScreenPreviews
 @Composable
-private fun HomePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) { HomeScreen(exampleTask, false, {}, {}, {}, {}) } } }
+private fun HomePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) { HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {}) } } }
 
 /**
  * 横向一级分页的手机与平板明暗预览。
@@ -54,7 +54,7 @@ private fun RootTabsPreview() {
     var screen by remember { mutableStateOf(Screen.HOME) }
     GodotToolTheme {
         RootTabs(screen, true, { screen = it }) { page ->
-            if (page == Screen.HOME) HomeScreen(exampleTask, false, {}, {}, {}, {})
+            if (page == Screen.HOME) HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {})
             else SettingsScreen(ToolSettings(), false, {}, {})
         }
     }
@@ -66,7 +66,7 @@ private fun RootTabsPreview() {
 @ScreenPreviews
 @Composable
 private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) { TasksScreen(listOf(exampleTask.copy(id = "22222222-2222-2222-2222-222222222222", status = TaskStatus.RUNNING,
-    stage = "extract", bytes = 25000000, totalBytes = 100000000, files = 620, totalFiles = 2893), exampleTask), "22222222-2222-2222-2222-222222222222", {}, {}, {}, {}) } } }
+    stage = "extract", bytes = 25000000, totalBytes = 100000000, files = 620, totalFiles = 2893), exampleTask), "22222222-2222-2222-2222-222222222222", {}, {}, {}) } } }
 
 /**
  * 设置页的四种设备与主题预览。
@@ -83,7 +83,7 @@ private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
 private fun FilesPreview() { GodotToolTheme { ToolScaffold(Screen.FILES) {
     FilePickerScreen(ToolUiState(screen = Screen.FILES, browserPath = "/storage/emulated/0/Download",
         browserFiles = listOf(BrowserFile("Projects", "/storage/emulated/0/Download/Projects", true, 0),
-            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140))), true, {}, {}, {}, {})
+            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140))), true, {}, {}, {})
 } } }
 
 /**
@@ -120,3 +120,46 @@ private fun RecoveryOptionsPreview() { GodotToolTheme {
         RecoveryOptions(RecoverySelection.scriptsOnly(), {})
     }
 } }
+
+/**
+ * 首页配置步骤的手机与平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun HomeConfigurationPreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
+    HomeScreen(ToolUiState(inputFiles = setOf("/example/Project.apk"), homeStep = 2), ToolSettings(), null, false,
+        {}, {}, {}, {}, {}, {}, {}, {})
+} } }
+
+/**
+ * 首页处理状态的手机与平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun HomeProcessingPreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
+    HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(status = TaskStatus.RUNNING, stage = "recover", overallProgress = 0.62f, selection = RecoverySelection.scriptsOnly()), true,
+        {}, {}, {}, {}, {}, {}, {}, {}, listOf(
+            com.winter.godot.tool.data.TaskLogLine("import", "正在读取文件"),
+            com.winter.godot.tool.data.TaskLogLine("mode", "切换至CNM模式", com.winter.godot.tool.data.TaskLogLevel.ACCENT),
+            com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件")))
+} } }
+
+/**
+ * 首页处理完成后的手机与平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun HomeCompletedPreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
+    HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(overallProgress = 1f, selection = RecoverySelection.scriptsOnly()), false,
+        {}, {}, {}, {}, {}, {}, {}, {}, listOf(com.winter.godot.tool.data.TaskLogLine("done", "处理完成，结果已保存", com.winter.godot.tool.data.TaskLogLevel.SUCCESS)))
+} } }
+
+/**
+ * 首页单个文件行的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun HomeSelectedFilesPreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
+    HomeScreen(ToolUiState(inputFiles = setOf("/example/Project.apk")), ToolSettings(), null, false,
+        {}, {}, {}, {}, {}, {}, {}, {})
+} } }

@@ -41,7 +41,7 @@ import java.util.Date
  * @param active 当前任务标识。
  */
 @Composable
-fun TasksScreen(tasks: List<TaskRecord>, active: String?, onCancel: () -> Unit, onOpen: (String) -> Unit, onRetry: (TaskRecord) -> Unit, onDelete: (String) -> Unit) {
+fun TasksScreen(tasks: List<TaskRecord>, active: String?, onOpen: (String) -> Unit, onRetry: (TaskRecord) -> Unit, onDelete: (String) -> Unit) {
     var detail by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by rememberSaveable { mutableStateOf<String?>(null) }
     if (tasks.isEmpty()) {
@@ -53,7 +53,7 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onCancel: () -> Unit, 
             items(tasks, key = { it.id }) { task ->
                 if (task.status == TaskStatus.RUNNING) {
                     BasicComponent(title = task.name, summary = stringResource(stageResource(task.stage)))
-                    TaskProgress(task, onCancel)
+                    TaskProgress(task, Modifier.padding(horizontal = Theme.spacing.lg, vertical = Theme.spacing.md))
                 } else {
                     val date = remember(task.createdAt) { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(task.createdAt)) }
                     ArrowPreference(title = task.name, summary = date, endActions = { Text(stringResource(statusResource(task)), style = Theme.typography.detail) },
