@@ -124,7 +124,7 @@ class ProjectAssembler {
     fun organizeReports(directory: File) {
         val reports = SafeFiles.resolve(directory, "reports").apply { mkdirs() }
         for (file in directory.listFiles().orEmpty()) {
-            if (!file.isFile || file.name in setOf("inputs.json", "request-options.json", "engine-result.json", "published-result.json", "workspace.json", "report.txt", RecoveryReport.FILE_NAME)) continue
+            if (!file.isFile || file.name in setOf("inputs.json", "request-options.json", "engine-result.json", "published-result.json", "workspace.json", "report.txt", "diff.gt", RecoveryReport.FILE_NAME)) continue
             if (file.extension !in setOf("json", "log", "txt")) continue
             val destination = SafeFiles.resolve(reports, file.name)
             if (destination.exists() || !file.renameTo(destination)) throw CoreFailure("WRITE_FAILED", "Cannot organize report: ${file.name}")

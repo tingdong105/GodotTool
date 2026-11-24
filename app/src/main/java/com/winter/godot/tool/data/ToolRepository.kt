@@ -4,6 +4,7 @@ import android.content.Context
 import com.tencent.mmkv.MMKV
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
+import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.task.EngineClient
 import com.winter.godot.tool.ui.components.errorResource
 import kotlinx.coroutines.CoroutineScope
@@ -66,20 +67,23 @@ class ToolRepository(private val context: Context) {
         kv.encode("plugins", value.plugins)
         kv.encode("project-config", value.config)
         kv.encode("keep-raw", value.keepRaw)
+        kv.encode("snapshot", value.snapshot.generate)
         mutableSettings.value = value
     }
 
     /**
      * 读取上次确认文件所在的目录，由浏览器校验可访问性。
+     * @param comparison 是否读取独立的对比目录。
      * @return 保存的目录，尚未确认时为空。
      */
-    fun confirmedBrowserPath(): String = kv.decodeString("confirmed-browser-path").orEmpty()
+    fun confirmedBrowserPath(comparison: Boolean = false): String = kv.decodeString(if (comparison) "comparison-browser-path" else "confirmed-browser-path").orEmpty()
 
     /**
      * 确认文件后持久保存已校验的父目录。
      * @param path 共享存储中的规范目录。
+     * @param comparison 是否写入独立的对比目录。
      */
-    fun rememberBrowserPath(path: String) { kv.encode("confirmed-browser-path", path) }
+    fun rememberBrowserPath(path: String, comparison: Boolean = false) { kv.encode(if (comparison) "comparison-browser-path" else "confirmed-browser-path", path) }
 
     /**
      * 创建一个恢复任务。
@@ -90,7 +94,7 @@ class ToolRepository(private val context: Context) {
     fun start(draft: ImportDraft, key: String): String {
         val id = UUID.randomUUID().toString()
         val request = draft.request(id, settings.value, key)
-        launchTask(TaskRecord(id, draft.name, selection = recoverySelectionFromJson(request.getJSONObject("selection"))), request)
+        launchTask(TaskRecord(id, draft.name, selection = recoverySelectionFromJson(request.getJSONObject("selection")), snapshot = SnapshotOptions(request.optBoolean("snapshot"))), request)
         return id
     }
 
@@ -141,7 +145,7 @@ class ToolRepository(private val context: Context) {
             JSONObject().put("file", input.absolutePath).put("name", source.getString("name"))
         }
         val task = tasks.value.first { it.id == id }
-        ImportDraft(task.name, sources, task.selection ?: readSelection(id))
+        ImportDraft(task.name, sources, task.selection ?: readSelection(id), task.snapshot)
     }
 
     /**
@@ -191,6 +195,7 @@ class ToolRepository(private val context: Context) {
                     "extract" -> R.string.log_extract
                     "checkpoint" -> R.string.log_checkpoint
                     "recover" -> R.string.log_recover
+                    "snapshot" -> R.string.stage_snapshot
                     "assemble" -> R.string.log_assemble
                     "publish", "export" -> R.string.log_publish
                     else -> null
@@ -289,7 +294,7 @@ class ToolRepository(private val context: Context) {
         val defaults = ToolSettings()
         return ToolSettings(runCatching { ThemeMode.valueOf(kv.decodeString("theme", defaults.theme.name)!!) }.getOrDefault(defaults.theme),
             kv.decodeBool("scripts", defaults.scripts), kv.decodeBool("scenes", defaults.scenes), kv.decodeBool("assets", defaults.assets),
-            kv.decodeBool("plugins", defaults.plugins), kv.decodeBool("project-config", defaults.config), kv.decodeBool("keep-raw", defaults.keepRaw))
+            kv.decodeBool("plugins", defaults.plugins), kv.decodeBool("project-config", defaults.config), kv.decodeBool("keep-raw", defaults.keepRaw), SnapshotOptions(kv.decodeBool("snapshot", false)))
     }
 
     /**

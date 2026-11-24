@@ -104,6 +104,8 @@ dependencies {
     implementation(libs.lottie.compose)
     // MMKV 持久化
     implementation(libs.mmkv)
+    // 摩西摩西
+    implementation(libs.moshi)
     // 可取消的后台工作与生命周期状态收集。
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

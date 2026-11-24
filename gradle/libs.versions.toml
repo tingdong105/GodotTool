@@ -11,6 +11,8 @@ miuix = "0.9.4"
 lottie = "6.7.1"
 # https://github.com/Tencent/MMKV
 mmkv = "2.4.3"
+# https://github.com/square/moshi
+moshi = "1.15.2"
 # https://github.com/Kotlin/kotlinx.coroutines
 coroutines = "1.11.0"
 # https://developer.android.com/jetpack/androidx/releases/fragment
@@ -46,6 +48,7 @@ miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", v
 miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
 lottie-compose = { group = "com.airbnb.android", name = "lottie-compose", version.ref = "lottie" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
+moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

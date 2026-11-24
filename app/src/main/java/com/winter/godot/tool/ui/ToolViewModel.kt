@@ -15,6 +15,7 @@ import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
+import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.files.BrowserFile
 import com.winter.godot.tool.feature.files.BrowserSort
 import com.winter.godot.tool.feature.files.FileBrowser
@@ -51,6 +52,8 @@ data class ToolUiState(
     val chosenFiles: Set<String> = emptySet(),
     val inputFiles: Set<String> = emptySet(),
     val followsSettings: Boolean = true,
+    val generateSnapshot: Boolean = false,
+    val pickerPurpose: String = "recovery",
     val homeStep: Int = 1,
     val loading: Boolean = false,
     val workspaceId: String? = null,
@@ -90,6 +93,8 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         browserDirectoryOnly = saved.get<Boolean>("browserDirectoryOnly") ?: false,
         inputFiles = if (restoringTask) emptySet() else saved.get<ArrayList<String>>("inputFiles").orEmpty().takeLast(1).toSet(),
         followsSettings = saved.get<Boolean>("followsSettings") ?: true,
+        generateSnapshot = saved.get<Boolean>("generateSnapshot") ?: settings.value.snapshot.generate,
+        pickerPurpose = saved.get<String>("pickerPurpose") ?: "recovery",
         homeStep = restoreHomeStep(saved.get<Int>("homeStep") ?: 1, saved.get<ArrayList<String>>("inputFiles").orEmpty().isNotEmpty(),
             active.value != null, tasks.value.firstOrNull())))
     val ui = mutableUi.asStateFlow()
@@ -105,7 +110,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         val id = saved.get<String>("workspaceId")
         if (backStack.value.last() == Screen.WORKSPACE) {
             if (id != null) openWorkspace(id) else navigate(Screen.HOME)
-        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { repository.confirmedBrowserPath() }, restoring = true)
+        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { repository.confirmedBrowserPath(ui.value.pickerPurpose != "recovery") }, restoring = true)
     }
 
     /**
@@ -124,13 +129,13 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         if (screen != Screen.FILES) fileJob?.cancel()
         if (screen != Screen.FILES && ui.value.browserDirectoryOnly) resetDirectorySort()
         if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
-        mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) it.inputFiles else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
+        mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) { if (it.pickerPurpose == "recovery") it.inputFiles else emptySet() } else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
             workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
             browserPath = if (screen == Screen.FILES) "" else it.browserPath,
             browserFiles = if (screen == Screen.FILES) emptyList() else it.browserFiles,
             entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false, browserRefreshing = false) }
         saved.saveRecoverySelection(ui.value.selection)
-        if (screen == Screen.FILES) readBrowser(repository.confirmedBrowserPath(), restoring = true)
+        if (screen == Screen.FILES) readBrowser(repository.confirmedBrowserPath(ui.value.pickerPurpose != "recovery"), restoring = true)
     }
 
     /**
@@ -213,9 +218,10 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
                     } catch (error: Exception) {
                         if (restoring) StorageAccess.root() else throw error
                     }
-                    val (actualPath, files) = try { folder.absolutePath to browser.list(folder.absolutePath) }
+                    val extensions = if (browserState.pickerPurpose == "recovery") setOf("apk", "pck", "zip") else setOf("gt", "zip")
+                    val (actualPath, files) = try { folder.absolutePath to browser.list(folder.absolutePath, extensions) }
                     catch (error: Exception) {
-                        if (restoring && folder != StorageAccess.root()) StorageAccess.root().absolutePath to browser.list(StorageAccess.root().absolutePath) else throw error
+                        if (restoring && folder != StorageAccess.root()) StorageAccess.root().absolutePath to browser.list(StorageAccess.root().absolutePath, extensions) else throw error
                     }
                     val leavingDirectory = browserState.browserDirectoryOnly && actualPath != browserState.browserPath
                     actualPath to sortBrowserFiles(files, if (leavingDirectory) fallbackSort else browserState.browserSort,
@@ -234,16 +240,17 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * @param path 已校验的输入路径。
      */
     fun chooseFile(path: String) {
-        if (active.value != null) return
+        if (active.value != null && ui.value.pickerPurpose == "recovery") return
         mutableUi.update { it.copy(chosenFiles = setOf(path)) }
-        saved["chosenFiles"] = ArrayList(ui.value.chosenFiles)
+        if (ui.value.pickerPurpose == "recovery") saved["chosenFiles"] = ArrayList(ui.value.chosenFiles)
     }
 
     /**
      * 确认文件后返回首页配置步骤。
      */
-    fun confirmFiles() {
-        if (active.value != null || ui.value.loading || ui.value.chosenFiles.size != 1) return
+    fun confirmFiles(onSnapshot: (Boolean, String) -> Unit = { _, _ -> }) {
+        val purpose = ui.value.pickerPurpose
+        if (active.value != null && purpose == "recovery" || ui.value.loading || ui.value.chosenFiles.size != 1) return
         val chosen = ui.value.chosenFiles.single()
         mutableUi.update { it.copy(loading = true) }
         fileJob = viewModelScope.launch {
@@ -253,6 +260,13 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
                     val parent = FileBrowser(StorageAccess.root()).checked(requireNotNull(file.parent))
                     check(file.isFile && file.canRead()) { "Selected file unavailable" }
                     parent.absolutePath
+                }
+                if (purpose != "recovery") {
+                    repository.rememberBrowserPath(folder, comparison = true)
+                    mutableUi.update { it.copy(loading = false, chosenFiles = emptySet()) }
+                    navigate(Screen.COMPARE)
+                    onSnapshot(purpose == "snapshot-old", chosen)
+                    return@launch
                 }
                 if (active.value != null) { mutableUi.update { it.copy(loading = false) }; return@launch }
                 repository.rememberBrowserPath(folder)
@@ -285,7 +299,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     fun followSettings(follow: Boolean) {
         if (active.value != null || follow == ui.value.followsSettings) return
         saved["followsSettings"] = follow
-        if (!follow) editSelection(settings.value.selection)
+        if (!follow) { editSelection(settings.value.selection); editSnapshot(settings.value.snapshot.generate) }
         mutableUi.update { it.copy(followsSettings = follow) }
     }
 
@@ -297,7 +311,8 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         if (active.value != null || ui.value.inputFiles.size != 1 || !selection.hasContent) return
         val file = File(ui.value.inputFiles.single())
         val source = JSONObject().put("file", file.absolutePath).put("name", file.name)
-        repository.start(ImportDraft(file.name, listOf(source), selection), "")
+        val snapshot = if (ui.value.followsSettings) settings.value.snapshot else SnapshotOptions(ui.value.generateSnapshot)
+        repository.start(ImportDraft(file.name, listOf(source), selection, snapshot), "")
         mutableUi.update { it.copy(chosenFiles = emptySet(), inputFiles = emptySet(), homeStep = 3) }
         saved["chosenFiles"] = arrayListOf<String>()
         saved["inputFiles"] = arrayListOf<String>()
@@ -323,6 +338,25 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     fun editSelection(value: RecoverySelection) {
         saved.saveRecoverySelection(value)
         mutableUi.update { it.copy(selection = value) }
+    }
+
+    /**
+     * 保存本次快照开关。
+     * @param value 是否生成快照。
+     */
+    fun editSnapshot(value: Boolean) {
+        saved["generateSnapshot"] = value
+        mutableUi.update { it.copy(generateSnapshot = value) }
+    }
+
+    /**
+     * 指定内置选择器的输入用途。
+     * @param purpose recovery、snapshot-old 或 snapshot-new。
+     */
+    fun preparePicker(purpose: String) {
+        require(purpose in setOf("recovery", "snapshot-old", "snapshot-new"))
+        saved["pickerPurpose"] = purpose
+        mutableUi.update { it.copy(pickerPurpose = purpose) }
     }
 
     /**

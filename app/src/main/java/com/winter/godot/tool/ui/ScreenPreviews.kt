@@ -12,6 +12,14 @@ import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
+import com.winter.godot.tool.feature.compare.ChangeKind
+import com.winter.godot.tool.feature.compare.CompareScreen
+import com.winter.godot.tool.feature.compare.CompareUiState
+import com.winter.godot.tool.feature.compare.ComparisonRecord
+import com.winter.godot.tool.feature.compare.ComparisonResultScreen
+import com.winter.godot.tool.feature.compare.ComparisonRow
+import com.winter.godot.tool.feature.compare.MethodChange
+import com.winter.godot.tool.feature.compare.SnapshotHeader
 import com.winter.godot.tool.feature.files.BrowserFile
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.FileSortButton
@@ -40,6 +48,40 @@ annotation class ScreenPreviews
 private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "NodeMotion 1.0.2", status = TaskStatus.SUCCEEDED, stage = "done",
     summary = "{\"resources\":2893,\"scripts\":229,\"engine\":\"4.5.0\"}")
 
+/** 对比页面的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun ComparePreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
+    CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
+} } }
+
+/**
+ * 对比历史多选与删除 FAB 的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
+    val header = SnapshotHeader(name = "Example", version = "1.0", catalogComplete = true, complete = true)
+    val records = (1..3).map { index -> ComparisonRecord("11111111-1111-1111-1111-11111111111$index", index.toLong(),
+        "Example 1.$index", "Example 1.${index + 1}", header, header.copy(version = "1.1"), listOf(1, 2, 3, 0, 0)) }
+    CompareScreen(CompareUiState(histories = records, selected = setOf(records.first().id), historyLoading = false), {}, {}, {}, {}, {}, {}, {})
+} } }
+
+/**
+ * 对比结果的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonResultPreview() { GodotToolTheme {
+    val header = SnapshotHeader(name = "Example", version = "1.0", engine = "4.5", catalogComplete = true, complete = true)
+    val record = ComparisonRecord("11111111-1111-1111-1111-111111111111", 0, "Example 1.0", "Example 1.1", header,
+        header.copy(version = "1.1"), listOf(1, 1, 0, 0, 0), "261125_1")
+    ComparisonResultScreen(CompareUiState(record = record, viewingId = record.id, historyLoading = false,
+        counts = record.counts, matchedCounts = record.counts, rows = listOf(ComparisonRow("scripts/player.gd", MethodChange(ChangeKind.MODIFIED, "take_damage",
+            "func take_damage ( amount : int )", "func take_damage ( amount : int , source = null )", true, true), false))),
+        {}, {}, {}, {}, {}, {}, {}, {}, {})
+} }
+
 /**
  * 工作台的四种设备与主题预览。
  */
@@ -57,6 +99,7 @@ private fun RootTabsPreview() {
     GodotToolTheme {
         RootTabs(screen, true, { screen = it }) { page ->
             if (page == Screen.HOME) HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {})
+            else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
             else SettingsScreen(ToolSettings(), false, {}, {})
         }
     }

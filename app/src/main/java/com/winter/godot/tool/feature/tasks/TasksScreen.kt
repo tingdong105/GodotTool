@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.feature.compare.SnapshotStatus
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
@@ -74,6 +75,7 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onOpen: (String) -> Un
                     Text(stringResource(R.string.conversion_failures, summary.optInt("failedScripts"), summary.optInt("failedConversions")))
             }
             if (summary.has("warning")) Text(stringResource(R.string.partial_recovery))
+            SnapshotStatus(summary.optString("snapshotStatus"), summary.optInt("snapshotFailures"))
             val output = summary.optString("outputPath")
             if (output.isNotEmpty()) SelectionContainer { Text(output, style = Theme.typography.detail) }
             if (task.errorCode.isNotEmpty() && task.status != TaskStatus.CANCELED) Text(stringResource(errorResource(task.errorCode)))

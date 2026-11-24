@@ -3,6 +3,7 @@ package com.winter.godot.tool.data
 import android.content.Context
 import com.winter.godot.core.io.SafeFiles
 import com.winter.godot.core.model.CoreFailure
+import com.winter.godot.tool.feature.compare.SnapshotReasonText
 import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.task.EngineExitDiagnostics
 import org.json.JSONArray
@@ -105,10 +106,10 @@ class WorkspaceStore(private val context: Context) {
             report.appendText("\n脚本恢复中断，已解密资源保留。\n已生成可读脚本：$scripts\n")
             ProjectAssembler.reportFile(output, "result.json").writeText(summary.toString(2))
         }
-        RecoveryReport.write(output)
+        RecoveryReport.write(output, describeReason = { SnapshotReasonText.describe(context, it) })
         writeJson(id, "engine-result.json", event.toString())
         val archive = summary.optString("outputPath").takeIf { it.endsWith(".zip") }?.let(::File)
-        if (archive != null) runCatching { PublicOutputs(StorageAccess.outputRoot()).publish(output, since, {}, {}, archive) }
+        if (archive != null) runCatching { PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(context, it) }).publish(output, since, {}, {}, archive) }
         File(directory(id), "workspace.json").delete()
         return event
     }
@@ -153,6 +154,7 @@ class WorkspaceStore(private val context: Context) {
             ?: ProjectAssembler.reportFile(directory, "recovery-report.txt").takeIf { it.isFile }
             ?: ProjectAssembler.reportFile(directory, "result.json").takeIf { it.isFile }
         if (report != null) entries += WorkspaceEntry(report.relativeTo(directory).invariantSeparatorsPath, report.length())
+        File(directory, "diff.gt").takeIf { it.isFile }?.let { entries += WorkspaceEntry(it.name, it.length()) }
         val sorted = entries.sortedBy { it.path }
         val json = JSONArray()
         sorted.forEach { json.put(JSONObject().put("path", it.path).put("size", it.size).put("source", it.source)) }

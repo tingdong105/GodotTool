@@ -36,7 +36,7 @@ import top.yukonga.miuix.kmp.utils.pagerGestureOverride
  */
 @Composable
 fun RootTabs(screen: Screen, active: Boolean, onNavigate: (Screen) -> Unit, content: @Composable (Screen) -> Unit) {
-    val tabs = remember { listOf(Screen.HOME, Screen.SETTINGS) }
+    val tabs = remember { listOf(Screen.HOME, Screen.COMPARE, Screen.SETTINGS) }
     val selected = tabs.indexOf(screen).coerceAtLeast(0)
     val pager = rememberPagerState(initialPage = selected, pageCount = { tabs.size })
     val scope = rememberCoroutineScope()

@@ -13,7 +13,14 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
  * @author Tingdong
  * @date 2026-11-24
  */
-enum class Screen : NavKey { HOME, TASKS, SETTINGS, FILES, WORKSPACE }
+enum class Screen : NavKey { HOME, TASKS, COMPARE, COMPARE_RESULT, SETTINGS, FILES, WORKSPACE }
+
+/**
+ * 判断是否为一级导航页面。
+ * 使用示例：Screen.COMPARE.isRoot()。
+ * @return 是否归属于固定底部导航。
+ */
+fun Screen.isRoot(): Boolean = this == Screen.HOME || this == Screen.COMPARE || this == Screen.SETTINGS
 
 /**
  * 为官方 NavDisplay 提供可恢复的业务返回栈。
@@ -38,7 +45,7 @@ class ToolNavigation(private val saved: SavedStateHandle) {
         val index = current.indexOf(screen)
         Snapshot.withMutableSnapshot {
             when {
-                screen == Screen.HOME || screen == Screen.SETTINGS -> {
+                screen.isRoot() -> {
                     controller.popUntil { entries.size == 1 }
                     controller.replace(screen)
                 }
@@ -84,9 +91,11 @@ class ToolNavigation(private val saved: SavedStateHandle) {
             } }
             val screens = restored.distinct()
             if (restored.size == stored.size && screens.size in 1..Screen.entries.size &&
-                screens.first() in listOf(Screen.HOME, Screen.SETTINGS) && screens.drop(1).none { it == Screen.HOME || it == Screen.SETTINGS }) return screens
+                screens.first().isRoot() && screens.drop(1).none { it.isRoot() }) return screens
         }
         return when (saved.get<String>("screen")) {
+            Screen.COMPARE.name -> listOf(Screen.COMPARE)
+            Screen.COMPARE_RESULT.name -> listOf(Screen.COMPARE, Screen.COMPARE_RESULT)
             Screen.SETTINGS.name, "DEFAULTS" -> listOf(Screen.SETTINGS)
             Screen.FILES.name, "RECOVERY" -> listOf(Screen.HOME, Screen.FILES)
             Screen.TASKS.name -> listOf(Screen.HOME, Screen.TASKS)

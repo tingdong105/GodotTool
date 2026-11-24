@@ -17,7 +17,8 @@ internal fun overallProgress(previous: Float, event: JSONObject): Float {
         "decrypt" -> 0.14f to 0.16f
         "extract" -> 0.16f to 0.48f
         "checkpoint" -> 0.48f to 0.50f
-        "recover" -> 0.50f to 0.84f
+        "recover" -> 0.50f to 0.78f
+        "snapshot" -> 0.78f to 0.84f
         "assemble" -> 0.84f to 0.92f
         "publish", "export" -> 0.92f to 0.99f
         else -> return previous

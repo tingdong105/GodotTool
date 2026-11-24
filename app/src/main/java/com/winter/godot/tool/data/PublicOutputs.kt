@@ -3,6 +3,9 @@ package com.winter.godot.tool.data
 import com.winter.godot.core.io.SafeFiles
 import com.winter.godot.core.model.CoreFailure
 import com.winter.godot.core.model.CoreProgress
+import com.winter.godot.tool.feature.compare.SnapshotFormat
+import com.winter.godot.tool.feature.compare.SnapshotGenerator
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -16,7 +19,7 @@ import java.util.zip.ZipOutputStream
  * @author Tingdong
  * @date 2026-11-24
  */
-class PublicOutputs(private val root: File) {
+class PublicOutputs(private val root: File, private val describeReason: (String) -> String = { it }) {
     /**
      * 预留不覆盖历史文件或旧目录的 ZIP 名称。
      * 使用示例：outputs.allocate(System.currentTimeMillis())。
@@ -49,6 +52,9 @@ class PublicOutputs(private val root: File) {
     fun publish(workspace: File, time: Long, check: () -> Unit, progress: (CoreProgress) -> Unit, destination: File? = null): File {
         val boundary = workspace.canonicalFile.toPath()
         val files = mutableListOf<Pair<File, String>>()
+        val options = File(workspace, "request-options.json").takeIf { it.isFile && it.length() in 1..8192 }?.let { JSONObject(it.readText()) }
+        val retained = if (options?.optBoolean("snapshot") == true && !File(workspace, "unpacked").isDirectory)
+            SnapshotGenerator.retainedFiles(workspace, recoverySelectionFromJson(options), emptyList(), check) else null
         for ((folder, source) in listOf(
             "unpacked" to ProjectAssembler.contentDirectory(workspace, "unpacked", "project", "recovered"),
             "original" to ProjectAssembler.contentDirectory(workspace, "original", "raw"),
@@ -62,10 +68,12 @@ class PublicOutputs(private val root: File) {
                 check()
                 if (!it.canonicalFile.toPath().startsWith(boundary)) throw CoreFailure("UNSAFE_PATH", "Output file escaped workspace")
                 if (files.size >= 200000) throw CoreFailure("ENTRY_LIMIT", "Too many output files")
+                if (retained != null && "${source.name}/${it.relativeTo(source).invariantSeparatorsPath}" !in retained) return@forEach
                 files += it to SafeFiles.relative("$folder/${it.relativeTo(source).invariantSeparatorsPath}")
             }
         }
-        files += RecoveryReport.write(workspace, check) to RecoveryReport.FILE_NAME
+        files += RecoveryReport.write(workspace, check, describeReason) to RecoveryReport.FILE_NAME
+        File(workspace, SnapshotFormat.FILE_NAME).takeIf { it.isFile }?.let { files += it to SnapshotFormat.FILE_NAME }
         val target = destination ?: allocate(time)
         if (target.canonicalFile.parentFile != root.canonicalFile || !target.name.matches(Regex("\\d{6}_\\d+\\.zip")))
             throw CoreFailure("UNSAFE_PATH", "Invalid output archive")

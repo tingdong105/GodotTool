@@ -19,11 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +37,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
+import com.winter.godot.tool.feature.compare.CompareScreen
+import com.winter.godot.tool.feature.compare.CompareViewModel
+import com.winter.godot.tool.feature.compare.ComparisonResultScreen
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.StorageAccess
@@ -82,23 +87,30 @@ private val toolPageTransition = object : NavTransition by NavTransitions.MiuixD
  * @param model 界面状态模型。
  */
 @Composable
-fun ToolRoute(model: ToolViewModel = viewModel()) {
+fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel = viewModel()) {
     val ui by model.ui.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val tasks by model.tasks.collectAsStateWithLifecycle()
     val active by model.active.collectAsStateWithLifecycle()
     val logs by model.logs.collectAsStateWithLifecycle()
+    val comparisonUi by comparison.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var permissionExplanation by remember { mutableStateOf(false) }
+    var pendingComparisonExport by rememberSaveable { mutableStateOf(false) }
+    val storageGranted: () -> Unit = {
+        if (StorageAccess.granted(context)) {
+            if (pendingComparisonExport) { pendingComparisonExport = false; comparison.publish() } else model.navigate(Screen.FILES)
+        } else permissionExplanation = true
+    }
     val legacyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        if (StorageAccess.granted(context)) model.navigate(Screen.FILES) else permissionExplanation = true
+        storageGranted()
     }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (StorageAccess.granted(context)) model.navigate(Screen.FILES) else permissionExplanation = true
+        storageGranted()
     }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val requestFiles: () -> Unit = {
-        if (StorageAccess.granted(context)) model.navigate(Screen.FILES)
+        if (StorageAccess.granted(context)) storageGranted()
         else if (Build.VERSION.SDK_INT >= 30) {
             val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
             runCatching { storagePermission.launch(intent) }.onFailure {
@@ -108,31 +120,52 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
         } else legacyPermission.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
     }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val back: () -> Unit = {
+        when {
+            ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded -> comparison.expandSearch(false)
+            ui.screen == Screen.COMPARE_RESULT -> { comparison.closeResult(); model.back() }
+            ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty() -> comparison.clearSelection()
+            else -> model.back()
+        }
+    }
+    LaunchedEffect(comparisonUi.viewingId) { if (comparisonUi.viewingId != null) model.navigate(Screen.COMPARE_RESULT) }
+    BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty(), onBack = back)
     GodotToolTheme(settings.theme) {
-        ToolNavHost(model.navEntries, ui, model::back) { screen, pageUi ->
+        ToolNavHost(model.navEntries, ui, back) { screen, pageUi ->
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
             val page: @Composable (Screen) -> Unit = { destination ->
                 when (destination) {
                     Screen.HOME -> HomeScreen(pageUi, settings, tasks.firstOrNull { it.id == active } ?: tasks.firstOrNull(), active != null,
-                        model::selectHomeStep, { model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
+                        model::selectHomeStep, { pendingComparisonExport = false; model.preparePicker("recovery"); model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
                         {
                             if (StorageAccess.granted(context)) {
                                 if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 model.recoverChosen()
-                            } else requestFiles()
+                            } else { pendingComparisonExport = false; model.preparePicker("recovery"); requestFiles() }
                         }, model::newRecovery,
                         { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
-                        { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, logs)
+                        { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, logs, model::editSnapshot)
+                    Screen.COMPARE -> CompareScreen(comparisonUi, { old ->
+                        pendingComparisonExport = false
+                        model.preparePicker(if (old) "snapshot-old" else "snapshot-new")
+                        model.navigate(Screen.COMPARE)
+                        requestFiles()
+                    }, comparison::start, comparison::swap, comparison::cancel, comparison::open, comparison::selectHistory, comparison::deleteSelected)
+                    Screen.COMPARE_RESULT -> ComparisonResultScreen(comparisonUi, comparison::search, comparison::expandSearch, comparison::filter,
+                        comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
+                            if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
+                        }, back)
                     Screen.TASKS -> TasksScreen(tasks, active, model::openWorkspace, model::retry, model::delete)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished)
-                    Screen.FILES -> FilePickerScreen(pageUi, active == null, model::browseFiles, model::chooseFile, model::confirmFiles, model::refreshFiles)
+                    Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
+                        { model.confirmFiles { old, path -> comparison.select(old, path) } }, model::refreshFiles)
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                 }
                 BackHandler(enabled = screen == ui.screen && (ui.previewPath != null || screen == Screen.FILES &&
                     ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath), onBack = model::back)
                 BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
                     ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
-                if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false }) {
+                if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false; pendingComparisonExport = false }) {
                     Text(stringResource(R.string.storage_permission_detail))
                     PrimaryButton(stringResource(R.string.authorize), { permissionExplanation = false; requestFiles() }, Modifier.fillMaxWidth())
                 }
@@ -142,8 +175,9 @@ fun ToolRoute(model: ToolViewModel = viewModel()) {
                     PrimaryButton(stringResource(R.string.confirm), model::dismissNotice, Modifier.fillMaxWidth())
                 } }
             }
-            if (screen == Screen.HOME || screen == Screen.SETTINGS) RootTabs(screen, ui.screen == screen, model::navigate, page)
-            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: model.back() }, actions = {
+            if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, page)
+            else if (screen == Screen.COMPARE_RESULT) page(screen)
+            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() }, actions = {
                 if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
             }) { page(screen) }
         }
@@ -166,7 +200,7 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
         backdropColor = MiuixTheme.colorScheme.background)
     NavDisplay(backStack = backStack, modifier = Modifier.fillMaxSize(), onBack = onBack,
         transition = toolPageTransition, effects = effects) {
-        entry<Screen>(contentKey = { if (it == Screen.HOME || it == Screen.SETTINGS) "root" else it.name }) { screen ->
+        entry<Screen>(contentKey = { if (it.isRoot()) "root" else it.name }) { screen ->
             var snapshot by remember { mutableStateOf(currentUi) }
             if (currentUi.screen == screen) snapshot = currentUi
             Box(Modifier.fillMaxSize().then(if (currentUi.screen == screen) Modifier else Modifier.clearAndSetSemantics {})) {
@@ -187,9 +221,11 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
 @Composable
 fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
     actions: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
-    val root = screen == Screen.HOME || screen == Screen.SETTINGS
+    val root = screen.isRoot()
     val title = when (screen) {
         Screen.HOME -> stringResource(R.string.app_name)
+        Screen.COMPARE -> stringResource(R.string.compare)
+        Screen.COMPARE_RESULT -> stringResource(R.string.compare_result)
         Screen.SETTINGS -> stringResource(R.string.settings)
         Screen.TASKS -> stringResource(R.string.history)
         Screen.FILES -> stringResource(R.string.select_file)
@@ -234,6 +270,8 @@ fun ToolBottomNavigation(screen: Screen, onNavigate: (Screen) -> Unit) {
     NavigationBar {
         NavigationBarItem(selected = screen == Screen.HOME, onClick = { onNavigate(Screen.HOME) },
             icon = toolIconVector(R.drawable.ic_workbench), label = stringResource(R.string.home))
+        NavigationBarItem(selected = screen == Screen.COMPARE, onClick = { onNavigate(Screen.COMPARE) },
+            icon = toolIconVector(R.drawable.ic_compare), label = stringResource(R.string.compare))
         NavigationBarItem(selected = screen == Screen.SETTINGS, onClick = { onNavigate(Screen.SETTINGS) },
             icon = toolIconVector(R.drawable.ic_settings), label = stringResource(R.string.settings))
     }

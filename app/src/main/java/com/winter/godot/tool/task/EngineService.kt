@@ -31,6 +31,8 @@ import com.winter.godot.tool.data.ProjectAssembler
 import com.winter.godot.tool.data.PublicOutputs
 import com.winter.godot.tool.data.WorkspaceStore
 import com.winter.godot.tool.feature.CNM.NodeMotionAdapter
+import com.winter.godot.tool.feature.compare.SnapshotGenerator
+import com.winter.godot.tool.feature.compare.SnapshotReasonText
 import com.winter.godot.tool.feature.files.StorageAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -138,7 +140,7 @@ class EngineService : Service() {
         selection = RecoverySelection(selectionJson.optBoolean("scripts", true), selectionJson.optBoolean("scenes", true),
             selectionJson.optBoolean("assets", true), selectionJson.optBoolean("plugins", true), selectionJson.optBoolean("config", true), selectionJson.optBoolean("keepRaw", false))
         if (!selection.hasContent) throw CoreFailure("EMPTY_SELECTION", "No recovery content selected")
-        store.writeJson(taskId, "request-options.json", selectionJson.toString())
+        store.writeJson(taskId, "request-options.json", JSONObject(selectionJson.toString()).put("snapshot", request.optBoolean("snapshot")).toString())
         val workDirectory = directory
         val inputs = stageInputs(request, directory)
         checkCanceled()
@@ -153,13 +155,14 @@ class EngineService : Service() {
                 nm = NodeMotionAdapter.probe(archives, ::checkCanceled, packageName)
                 if (nm) {
                     emit(JSONObject().put("type", "mode").put("mode", "CNM"))
-                    val entries = NodeMotionAdapter.extract(archives, File(directory, "raw"), ::checkCanceled, ::progress, selection::needsForRecovery, ensureVersionProbe = true)
+                    val entries = NodeMotionAdapter.extract(archives, File(directory, "raw"), ::checkCanceled, ::progress,
+                        { path -> selection.needsForRecovery(path) || request.optBoolean("snapshot") && SnapshotGenerator.needs(path) }, ensureVersionProbe = true)
                     nmResources = entries.size
                     val index = JSONArray()
                     entries.forEach { index.put(JSONObject().put("path", it.path).put("size", it.size).put("md5", it.md5).put("encrypted", it.encrypted)) }
                     store.writeJson(taskId, "raw-index.json", index.toString())
                     // 解密与引擎恢复分阶段落盘，原生崩溃后仍能读取完整原始资源。
-                    val outputs = PublicOutputs(StorageAccess.outputRoot())
+                    val outputs = PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(this@EngineService, it) })
                     outputArchive = outputs.allocate(System.currentTimeMillis())
                     val pending = JSONObject().put("type", "result").put("id", taskId).put("summary", JSONObject()
                         .put("resources", nmResources).put("scripts", 0).put("adapter", "CNM")
@@ -183,6 +186,7 @@ class EngineService : Service() {
             .put("scripts", request.optBoolean("scripts", true)).put("scenes", request.optBoolean("scenes", true)).put("key", request.optString("key"))
             .put("availableBytes", workDirectory.usableSpace)
             .put("selection", selectionJson)
+            .put("snapshot", request.optBoolean("snapshot"))
         checkCanceled()
         GdreRunner(this).start(job.toString(), canceled, { payload ->
             try {
@@ -211,7 +215,7 @@ class EngineService : Service() {
         checkCanceled()
         if (!StorageAccess.granted(this)) throw CoreFailure("STORAGE_PERMISSION", "Shared storage access is required")
         val summary = event.getJSONObject("summary")
-        val outputs = PublicOutputs(StorageAccess.outputRoot())
+        val outputs = PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(this@EngineService, it) })
         val output = outputArchive ?: outputs.allocate(System.currentTimeMillis()).also { outputArchive = it }
         val checkpoint = JSONObject(summary.toString()).put("warning", "RECOVERY_INTERRUPTED")
             .put("layoutVersion", 4).put("selection", selectionJson).put("outputPath", output.absolutePath)
@@ -222,6 +226,19 @@ class EngineService : Service() {
             if (array.length() > 200000) throw CoreFailure("ENTRY_LIMIT", "Too many fallback resources")
             List(array.length()) { array.getString(it) }
         } else emptyList()
+        val requestOptions = File(directory, "request-options.json")
+        val snapshot = requestOptions.isFile && JSONObject(requestOptions.readText()).optBoolean("snapshot")
+        if (snapshot) {
+            val generator = SnapshotGenerator(this)
+            try { generator.generate(directory, summary, ::checkCanceled, ::progress) }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                File(directory, "diff.gt").delete()
+                summary.put("snapshotStatus", "failed").put("snapshotError", error.message.orEmpty().takeIf { it.matches(Regex("[A-Z_]+")) } ?: "SNAPSHOT_FAILED")
+                if (!summary.has("warning")) summary.put("warning", "SNAPSHOT_FAILED")
+            }
+            generator.prune(directory, selection, dependencies, ::checkCanceled)
+        }
         val assembler = ProjectAssembler()
         val project = assembler.assemble(directory, selection, ::checkCanceled, ::progress, dependencies)
         summary.put("rawResources", summary.optInt("resources")).put("resources", project.files).put("scripts", project.scripts)
@@ -372,7 +389,7 @@ class EngineService : Service() {
                 ProjectAssembler.reportFile(directory, "recovery-report.txt").appendText("\n$code\n$detail\n")
                 event.put("summary", summary)
                 if (!canceled.get()) runCatching {
-                    PublicOutputs(StorageAccess.outputRoot()).publish(directory, System.currentTimeMillis(), {}, {}, outputArchive)
+                    PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(this@EngineService, it) }).publish(directory, System.currentTimeMillis(), {}, {}, outputArchive)
                 }
             }
         }

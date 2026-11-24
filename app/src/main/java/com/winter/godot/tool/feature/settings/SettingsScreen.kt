@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.ThemeMode
 import com.winter.godot.tool.data.ToolSettings
+import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
@@ -28,6 +29,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 /**
  * 分组管理外观、恢复偏好、存储和许可。
@@ -48,7 +50,10 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
         }
         item {
             SectionTitle(stringResource(R.string.recovery_content))
-            RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) })
+            Card {
+                RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) }, embedded = true)
+                SwitchPreference(settings.snapshot.generate, { onChange(settings.copy(snapshot = SnapshotOptions(it))) }, stringResource(R.string.generate_snapshot))
+            }
         }
         item {
             SectionTitle(stringResource(R.string.storage))

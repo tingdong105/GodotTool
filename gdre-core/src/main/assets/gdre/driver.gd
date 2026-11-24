@@ -143,7 +143,7 @@ func _read_model_dependencies(infos: Array) -> bool:
 				model_dependencies[dependency] = true
 	return true
 
-func _needed(path: String) -> bool:
+func _export_needed(path: String) -> bool:
 	if not request.has("selection"):
 		return true
 	if _selected(path):
@@ -153,6 +153,44 @@ func _needed(path: String) -> bool:
 		return true
 	var selection: Dictionary = request["selection"]
 	return bool(selection.get("assets", true)) and (relative.begins_with(".godot/exported/") or relative.begins_with(".godot/imported/") or relative.begins_with(".import/"))
+
+## 快照固定扫描脚本和内嵌脚本容器，与导出类别独立。
+func _snapshot_selected(path: String) -> bool:
+	if not bool(request.get("snapshot", false)):
+		return false
+	var relative: String = _relative(_source_path(path))
+	if relative.begins_with(".godot/") or relative.begins_with(".import/"):
+		return false
+	return relative.get_extension().to_lower() in ["gd", "gdc", "gde", "tscn", "scn", "tres", "res"]
+
+func _needed(path: String) -> bool:
+	if _export_needed(path) or _snapshot_selected(path):
+		return true
+	var relative: String = _relative(path)
+	return bool(request.get("snapshot", false)) and relative.get_extension().to_lower() in ["remap", "import", "uid"]
+
+## 写入全量代码清单及对应的原始文件路径。
+func _snapshot_catalog(catalog: Array, output: String) -> bool:
+	if not bool(request.get("snapshot", false)):
+		return true
+	var records: Dictionary = {}
+	for info: Object in catalog:
+		var path: String = info.get_path()
+		if not _snapshot_selected(path):
+			continue
+		var relative: String = _relative(_source_path(path))
+		var extension: String = relative.get_extension().to_lower()
+		var container: bool = extension in ["tscn", "scn", "tres", "res"]
+		if extension in ["gdc", "gde"]:
+			relative = relative.get_basename() + ".gd"
+		elif extension == "scn":
+			relative = relative.get_basename() + ".tscn"
+		elif extension == "res":
+			relative = relative.get_basename() + ".tres"
+		if not records.has(relative):
+			records[relative] = {"path": relative, "container": container, "originals": []}
+		records[relative]["originals"].append(_relative(path))
+	return _write_text(output.path_join("snapshot-catalog.json"), JSON.stringify(records.values()))
 
 func _read_origins(infos: Array) -> void:
 	for info: Object in infos:
@@ -233,6 +271,8 @@ func _run() -> void:
 		return
 	_read_origins(catalog)
 	if not _read_model_dependencies(catalog):
+		return
+	if not _snapshot_catalog(catalog, output):
 		return
 	var infos: Array = []
 	for info: Object in catalog:
@@ -343,16 +383,23 @@ func _run() -> void:
 	var project: String = output.path_join("recovered")
 	DirAccess.make_dir_recursive_absolute(project)
 	var recover_files: PackedStringArray = PackedStringArray()
+	var snapshot_files: PackedStringArray = PackedStringArray()
 	var loaded_files: PackedStringArray = settings.get_file_list(PackedStringArray())
 	for path: String in loaded_files:
 		if _selected(path):
 			recover_files.append(path)
+		elif _snapshot_selected(path):
+			snapshot_files.append(path)
 	# 导入器按 dest_files 筛选，补齐所选源码对应的编译资源路径。
 	for import_info: Object in settings.get_import_files(false):
 		if _selected(import_info.get_source_file()):
 			for path: String in import_info.get_dest_files():
 				if path in loaded_files and path not in recover_files:
 					recover_files.append(path)
+		elif _snapshot_selected(import_info.get_source_file()):
+			for path: String in import_info.get_dest_files():
+				if path in loaded_files and path not in recover_files and path not in snapshot_files:
+					snapshot_files.append(path)
 	# 校验导入元数据中的输出路径，防止资源转换写出工作区。
 	for import_info: Object in settings.get_import_files(false):
 		for import_path: String in [import_info.get_source_file(), import_info.get_export_dest(), import_info.get_export_lossless_copy()]:
@@ -373,12 +420,16 @@ func _run() -> void:
 				return
 		if error != OK:
 			summary["warning"] = "RECOVERY_PARTIAL"
+	# 额外恢复单独统计，避免快照分析污染用户导出结果。
+	if not snapshot_files.is_empty():
+		var snapshot_exporter: Object = ClassDB.instantiate("ImportExporter")
+		snapshot_exporter.export_imports(project, snapshot_files)
 	# 缺少 .remap 的独立字节码不会进入导入器，按版本单独恢复。
-	if bool(request.get("scripts", true)):
+	if bool(request.get("scripts", true)) or bool(request.get("snapshot", false)):
 		var standalone_ok: int = 0
 		var standalone_failed: int = 0
 		for path: String in loaded_files:
-			if not _selected(path):
+			if not _selected(path) and not _snapshot_selected(path):
 				continue
 			if _cancelled():
 				_finish()
@@ -392,16 +443,19 @@ func _run() -> void:
 				continue
 			var decompiler: Object = ClassDB.class_call_static("GDScriptDecomp", "create_decomp_for_version", settings.get_version_string(), true)
 			if decompiler == null:
-				standalone_failed += 1
+				if _selected(path):
+					standalone_failed += 1
 				continue
 			var script_error: int = decompiler.decompile_byte_code_encrypted(path, settings.get_encryption_key()) if extension == "gde" else decompiler.decompile_byte_code(path)
 			if script_error != OK:
-				standalone_failed += 1
+				if _selected(path):
+					standalone_failed += 1
 				continue
 			DirAccess.make_dir_recursive_absolute(target.get_base_dir())
 			if not _write_text(target, decompiler.get_script_text()):
 				return
-			standalone_ok += 1
+			if _selected(path):
+				standalone_ok += 1
 		summary["scripts"] = int(summary["scripts"]) + standalone_ok
 		summary["failedScripts"] = maxi(int(summary["failedScripts"]), standalone_failed)
 		if standalone_failed > 0:

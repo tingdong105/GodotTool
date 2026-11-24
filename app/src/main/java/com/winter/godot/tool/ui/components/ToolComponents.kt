@@ -225,6 +225,7 @@ fun stageResource(stage: String): Int = when (stage) {
     "decrypt" -> R.string.stage_decrypt
     "extract" -> R.string.stage_extract
     "recover" -> R.string.stage_recover
+    "snapshot" -> R.string.stage_snapshot
     "checkpoint" -> R.string.log_checkpoint
     "publish" -> R.string.stage_publish
     "assemble" -> R.string.stage_assemble

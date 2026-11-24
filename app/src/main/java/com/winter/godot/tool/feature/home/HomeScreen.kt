@@ -43,6 +43,7 @@ import com.winter.godot.tool.data.TaskLogLine
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
+import com.winter.godot.tool.feature.compare.SnapshotStatus
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.recovery.recoveryMode
 import com.winter.godot.tool.ui.ToolUiState
@@ -88,7 +89,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, busy: Boolean,
     onStep: (Int) -> Unit, onChoose: () -> Unit, onFollow: (Boolean) -> Unit,
     onSelection: (RecoverySelection) -> Unit, onStart: () -> Unit, onNew: () -> Unit,
-    onHistory: () -> Unit, onOpen: (String) -> Unit, logs: List<TaskLogLine> = emptyList()) {
+    onHistory: () -> Unit, onOpen: (String) -> Unit, logs: List<TaskLogLine> = emptyList(), onSnapshot: (Boolean) -> Unit = {}) {
     val step = if (busy) 3 else state.homeStep
     val selection = if (state.followsSettings) settings.selection else state.selection
     val running = latest?.status == TaskStatus.RUNNING
@@ -128,7 +129,10 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
                     insideMargin = configurationMargin)
                 AnimatedVisibility(!state.followsSettings, enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(),
                     exit = shrinkVertically(spring(dampingRatio = 0.9f, stiffness = 450f)) + fadeOut()) {
-                    Column { RecoveryOptions(selection, onSelection, embedded = true, insideMargin = configurationMargin) }
+                    Column {
+                        RecoveryOptions(selection, onSelection, embedded = true, insideMargin = configurationMargin)
+                        SwitchPreference(state.generateSnapshot, onSnapshot, stringResource(R.string.generate_snapshot), insideMargin = configurationMargin)
+                    }
                 }
                 PrimaryButton(stringResource(R.string.next_step), { onStep(3) }, Modifier.fillMaxWidth(), enabled = selection.hasContent)
             }
@@ -154,6 +158,8 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
                     Text(stringResource(R.string.configuration_summary, stringResource(recoveryMode(selection)),
                         stringResource(if (selection.keepRaw) R.string.raw_enabled else R.string.raw_disabled)),
                         style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    if (if (state.followsSettings) settings.snapshot.generate else state.generateSnapshot)
+                        Text(stringResource(R.string.generate_snapshot), style = Theme.typography.detail, color = MiuixTheme.colorScheme.primary)
                     PrimaryButton(stringResource(R.string.start_processing), onStart, Modifier.fillMaxWidth(), enabled = !busy && name != null && selection.hasContent, icon = MiuixIcons.Play)
                 }
             }
@@ -237,4 +243,5 @@ private fun ResultSummary(task: TaskRecord) {
     Text(if (ready && summary != null) stringResource(R.string.recovery_totals, summary.optInt("resources"), summary.optInt("scripts"))
         else stringResource(com.winter.godot.tool.ui.components.errorResource(task.errorCode)),
         style = Theme.typography.detail, color = if (ready) MiuixTheme.colorScheme.onSurfaceVariantSummary else MiuixTheme.colorScheme.error)
+    SnapshotStatus(summary?.optString("snapshotStatus").orEmpty(), summary?.optInt("snapshotFailures") ?: 0)
 }

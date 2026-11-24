@@ -33,4 +33,10 @@ object StorageAccess {
      * 获取 GodotTool 的公共输出目录。
      */
     fun outputRoot(): File = File(root(), "GodotTool")
+
+    /**
+     * 获取版本对比的公共结果目录。
+     * @return 共享存储中的 GodotTool/diff。
+     */
+    fun diffRoot(): File = File(outputRoot(), "diff")
 }

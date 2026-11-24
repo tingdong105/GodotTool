@@ -1,6 +1,7 @@
 package com.winter.godot.tool.data
 
 import com.winter.godot.core.model.RecoverySelection
+import com.winter.godot.tool.feature.compare.SnapshotOptions
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,7 +18,8 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
  * @date 2026-11-21
  */
 data class ToolSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val scripts: Boolean = true, val scenes: Boolean = false,
-    val assets: Boolean = false, val plugins: Boolean = false, val config: Boolean = false, val keepRaw: Boolean = false) {
+    val assets: Boolean = false, val plugins: Boolean = false, val config: Boolean = false, val keepRaw: Boolean = false,
+    val snapshot: SnapshotOptions = SnapshotOptions()) {
     val selection: RecoverySelection get() = RecoverySelection(scripts, scenes, assets, plugins, config, keepRaw)
 
     /**
@@ -73,6 +75,7 @@ data class TaskRecord(
     val overallProgress: Float = 0f,
     val selection: RecoverySelection? = null,
     val acknowledged: Boolean = false,
+    val snapshot: SnapshotOptions = SnapshotOptions(),
 ) {
     /**
      * 将摘要序列化为可迁移的 JSON。
@@ -80,7 +83,7 @@ data class TaskRecord(
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("createdAt", createdAt).put("operation", operation)
         .put("status", status.name).put("stage", stage).put("path", path).put("bytes", bytes).put("totalBytes", totalBytes)
         .put("files", files).put("totalFiles", totalFiles).put("errorCode", errorCode).put("errorDetail", errorDetail).put("summary", summary)
-        .put("overallProgress", overallProgress).put("selection", selection?.toJson()).put("acknowledged", acknowledged)
+        .put("overallProgress", overallProgress).put("selection", selection?.toJson()).put("acknowledged", acknowledged).put("snapshot", snapshot.generate)
 
     companion object {
         /**
@@ -100,7 +103,7 @@ data class TaskRecord(
                 json.optLong("bytes").coerceAtLeast(0), json.optLong("totalBytes").coerceAtLeast(0), json.optInt("files").coerceAtLeast(0),
                 json.optInt("totalFiles").coerceAtLeast(0), json.optString("errorCode"), json.optString("errorDetail"), summary,
                 json.optDouble("overallProgress", if (json.optString("stage") == "done") 1.0 else 0.0).toFloat().coerceIn(0f, 1f),
-                selection?.let(::recoverySelectionFromJson), json.optBoolean("acknowledged", status != TaskStatus.RUNNING))
+                selection?.let(::recoverySelectionFromJson), json.optBoolean("acknowledged", status != TaskStatus.RUNNING), SnapshotOptions(json.optBoolean("snapshot")))
         }
     }
 }
@@ -125,7 +128,7 @@ data class WorkspaceEntry(val path: String, val size: Long, val source: String =
  * @author Tingdong
  * @date 2026-11-21
  */
-data class ImportDraft(val name: String, val sources: List<JSONObject>, val selection: RecoverySelection? = null) {
+data class ImportDraft(val name: String, val sources: List<JSONObject>, val selection: RecoverySelection? = null, val snapshot: SnapshotOptions? = null) {
     /**
      * 生成发送给后台服务的任务。
      * @param id 任务标识。
@@ -140,6 +143,7 @@ data class ImportDraft(val name: String, val sources: List<JSONObject>, val sele
         return JSONObject().put("id", id).put("name", name)
             .put("operation", "recover").put("sources", JSONArray(sources)).put("scripts", selected.scripts || selected.plugins).put("scenes", selected.scenes).put("key", key)
             .put("selection", selected.toJson())
+            .put("snapshot", (snapshot ?: settings.snapshot).generate)
     }
 }
 
