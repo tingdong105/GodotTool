@@ -18,8 +18,11 @@ val signingProperties = Properties().apply {
 
 android {
     namespace = "com.winter.godot.tool"
+    ndkVersion = libs.versions.ndk.get()
     compileSdk {
-        version = release(37)
+        version = release(37) {
+            minorApiLevel = 1
+        }
     }
 
     defaultConfig {
@@ -34,7 +37,6 @@ android {
             abiFilters += "arm64-v8a"
         }
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -63,15 +65,49 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     buildFeatures {
         compose = true
     }
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+    externalNativeBuild.cmake {
+        path = file("src/main/cpp/CMakeLists.txt")
+        version = libs.versions.cmake.get()
+    }
+}
+
+// 校验并准备固定版本的 Capstone 源码。
+val prepareCapstone = tasks.register<Exec>("prepareCapstone") {
+    workingDir(rootDir)
+    commandLine("python", "tools/prepare_capstone.py")
+    inputs.file(rootProject.file("tools/prepare_capstone.py"))
+    inputs.file(rootProject.file("gradle/libs.versions.toml"))
+    outputs.dir(layout.projectDirectory.dir("vendor/capstone"))
+}
+tasks.configureEach {
+    if (name == "preBuild" || name.startsWith("configureCMake")) dependsOn(prepareCapstone)
 }
 
 dependencies {
+    // Godot解包核心
+    implementation(project(":gdre-core"))
+    // miuix 组件库
+    implementation(libs.miuix)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.icons)
+    // miuix 独立导航
+    implementation(libs.miuix.nav)
+    // mmkv持久化
+    implementation(libs.mmkv)
+    // 可取消的后台工作与生命周期状态收集。
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.compose.foundation)
     // 自带的一些Compose依赖
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -82,13 +118,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // 测试相关依赖
-    testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // Android Studio 界面预览工具。
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 

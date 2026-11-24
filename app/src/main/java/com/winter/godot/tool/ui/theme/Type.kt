@@ -1,34 +1,20 @@
 package com.winter.godot.tool.ui.theme
 
-import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
-)
+/**
+ * 跨页面复用的文字层级。
+ * @author Tingdong
+ * @date 2026-11-21
+ */
+class ToolTypography {
+    val hero: TextStyle @Composable get() = MiuixTheme.textStyles.title1
+    val title: TextStyle @Composable get() = MiuixTheme.textStyles.title4
+    val body: TextStyle @Composable get() = MiuixTheme.textStyles.main
+    val detail: TextStyle @Composable get() = MiuixTheme.textStyles.footnote1
+    val code: TextStyle @Composable get() = MiuixTheme.textStyles.body2.copy(fontFamily = FontFamily.Monospace)
+    val number: TextStyle @Composable get() = MiuixTheme.textStyles.footnote1.copy(fontFeatureSettings = "tnum")
+}

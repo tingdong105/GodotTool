@@ -36,4 +36,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "GodotTool"
 include(":app")
- 
+include(":gdre-core")

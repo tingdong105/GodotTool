@@ -10,3 +10,6 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# Capstone JNI 通过固定类名与方法名调用。
+-keep class com.winter.godot.tool.feature.CNM.CapstoneLocator { *; }

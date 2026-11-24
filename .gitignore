@@ -22,3 +22,10 @@ local.properties
 /key/
 /app/debug/
 /app/release/
+
+# 可重建的第三方核心与缓存
+/gdre-core/vendor/
+/gdre-core/build/
+/tools/.cache/
+/app/vendor/
+__pycache__/
