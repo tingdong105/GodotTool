@@ -9,7 +9,7 @@
 <p>
   <img src="https://img.shields.io/badge/Android-9.0%2B-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 9.0 及以上" />
   <img src="https://img.shields.io/badge/ABI-arm64--v8a-475569?style=flat-square" alt="arm64-v8a" />
-  <a href="https://github.com/tingdong105/GodotTool/releases/latest"><img src="https://img.shields.io/github/v/release/tingdong105/GodotTool?style=flat-square&amp;label=Release&amp;color=22C55E&amp;logo=github&amp;logoColor=white" alt="最新 Release" /></a>
+  <a href="https://github.com/tingdong105/GodotTool/releases/latest"><img src="https://img.shields.io/github/v/release/tingdong105/GodotTool?style=flat-square&amp;label=Release&amp;color=22C55E&amp;logo=github&amp;logoColor=white&amp;cacheSeconds=300" alt="最新 Release" /></a>
 </p>
 
 <p>
