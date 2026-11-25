@@ -102,7 +102,7 @@
     <string name="home">首页</string>
     <string name="history">处理记录</string>
     <string name="output_directory">输出目录</string>
-    <string name="output_path">/storage/emulated/0/GodotTool/日期_次数.zip</string>
+    <string name="output_path">/storage/emulated/0/GodotTool/</string>
     <string name="shared_storage">内部存储</string>
     <string name="storage_permission">访问文件</string>
     <string name="storage_permission_detail">请允许管理所有文件，以便浏览资源包并将结果保存到内部存储的 GodotTool 文件夹。</string>
