@@ -16,6 +16,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.os.Process
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -59,7 +60,8 @@ class EngineService : Service() {
     @Volatile private var listener: Messenger? = null
     @Volatile private var taskId = ""
     @Volatile private var lastEvent: String = ""
-    private var lastProgress = 0L
+    private val progressGate = ProgressGate()
+    @Volatile private var startedAtElapsedRealtime = 0L
     private var lastNotification = 0L
     private var overall = 0f
     private var started = false
@@ -72,7 +74,11 @@ class EngineService : Service() {
         when (message.what) {
             EngineProtocol.SUBSCRIBE -> {
                 listener = message.replyTo
-                if (lastEvent.isNotEmpty()) send(lastEvent)
+                if (lastEvent.isNotEmpty()) {
+                    val event = JSONObject(lastEvent)
+                    if (!terminal.get() && event.optString("type") == "progress") attachElapsed(event)
+                    send(event.toString())
+                }
             }
             EngineProtocol.START -> {
                 listener = message.replyTo
@@ -135,6 +141,8 @@ class EngineService : Service() {
         taskId = request.getString("id")
         checkCanceled()
         val directory = store.directory(taskId).apply { mkdirs() }
+        val now = SystemClock.elapsedRealtime()
+        startedAtElapsedRealtime = request.optLong("startedAtElapsedRealtime", now).takeIf { it in 1..now } ?: now
         if (!StorageAccess.granted(this)) throw CoreFailure("STORAGE_PERMISSION", "Shared storage access is required")
         selectionJson = request.optJSONObject("selection") ?: JSONObject()
         selection = RecoverySelection(selectionJson.optBoolean("scripts", true), selectionJson.optBoolean("scenes", true),
@@ -177,7 +185,8 @@ class EngineService : Service() {
                         File(workDirectory, "result.json").writeText(pending.getJSONObject("summary").toString(2))
                         File(workDirectory, "recovery-report.txt").writeText("CNM: resources decrypted and MD5 verified. Script recovery is pending.\n")
                     }
-                    outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, { value -> progress(value.copy(stage = "checkpoint")) }, outputArchive)
+                    outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, { value -> progress(value.copy(stage = "checkpoint")) }, outputArchive,
+                        checkpoint = true)
                 }
             }
         }
@@ -307,9 +316,6 @@ class EngineService : Service() {
      * @param value 核心进度。
      */
     private fun progress(value: CoreProgress) {
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (value.path.isNotEmpty() && now - lastProgress < 120 && value.bytes != value.totalBytes) return
-        lastProgress = now
         emit(JSONObject().put("type", "progress").put("stage", value.stage).put("path", value.path).put("bytes", value.bytes)
             .put("totalBytes", value.totalBytes).put("files", value.files).put("totalFiles", value.totalFiles))
     }
@@ -322,10 +328,12 @@ class EngineService : Service() {
         if (terminal.get()) return
         event.put("id", taskId)
         if (event.optString("type") == "progress") {
-            overall = overallProgress(overall, event)
-            event.put("overallProgress", overall)
             currentStage = event.optString("stage", currentStage)
             currentPath = event.optString("path")
+            if (!progressGate.accept(event, android.os.SystemClock.elapsedRealtime())) return
+            attachElapsed(event)
+            overall = overallProgress(overall, event)
+            event.put("overallProgress", overall)
         }
         lastEvent = event.toString()
         send(lastEvent)
@@ -344,6 +352,7 @@ class EngineService : Service() {
     @Synchronized
     private fun finish(event: JSONObject) {
         if (terminal.get()) return
+        attachElapsed(event)
         event.put("id", taskId)
         if (event.optString("type") == "error" && !event.has("summary")) {
             store.result(taskId)?.optJSONObject("summary")?.takeIf { it.optInt("resources") > 0 }?.let { summary ->
@@ -369,6 +378,15 @@ class EngineService : Service() {
      */
     private fun send(payload: String) {
         runCatching { listener?.send(Message.obtain(null, EngineProtocol.EVENT).apply { data = Bundle().apply { putString(EngineProtocol.PAYLOAD, payload) } }) }
+    }
+
+    /**
+     * 将服务确认的全流程耗时附到进度或终态。
+     * @param event 待发送或保存的任务事件。
+     */
+    private fun attachElapsed(event: JSONObject) {
+        if (startedAtElapsedRealtime > 0L)
+            event.put("elapsedMillis", (SystemClock.elapsedRealtime() - startedAtElapsedRealtime).coerceAtLeast(0L))
     }
 
     /**

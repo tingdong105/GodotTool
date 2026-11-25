@@ -26,7 +26,7 @@ android {
         res.srcDir("vendor/res")
         aidl.srcDir("vendor/aidl")
         jniLibs.srcDir("vendor/jniLibs")
-        assets.srcDir("vendor/assets")
+        assets.setSrcDirs(listOf("vendor/assets", layout.buildDirectory.dir("generated/gdreAssets")))
     }
 }
 
@@ -46,3 +46,15 @@ val prepareGdre = tasks.register<Exec>("prepareGdre") {
     outputs.dir(layout.projectDirectory.dir("vendor"))
 }
 tasks.named("preBuild") { dependsOn(prepareGdre) }
+
+// 使用同版本 GDRE 将工具脚本编译为字节码，安装包不包含明文源码。
+val compileGdreScripts = tasks.register<Exec>("compileGdreScripts") {
+    workingDir(rootDir)
+    commandLine("python", "tools/compile_gdre_scripts.py", "--output",
+        layout.buildDirectory.dir("generated/gdreAssets").get().asFile.absolutePath)
+    inputs.file(rootProject.file("tools/compile_gdre_scripts.py"))
+    inputs.file(rootProject.file("tools/prepare_gdre.py"))
+    inputs.dir(layout.projectDirectory.dir("src/main/assets"))
+    outputs.dir(layout.buildDirectory.dir("generated/gdreAssets"))
+}
+tasks.named("preBuild") { dependsOn(compileGdreScripts) }

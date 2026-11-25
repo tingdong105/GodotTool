@@ -8,7 +8,6 @@ var host_mode: bool = false
 var stopped: bool = false
 var original_paths: Dictionary = {}
 var model_dependencies: Dictionary = {}
-
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -240,6 +239,11 @@ func _run() -> void:
 			_fail("BAD_REQUEST", "Expected a request file")
 			return
 		request = JSON.parse_string(FileAccess.get_file_as_string(args[0]))
+	# 在挂载目标资源前加载工具字节码，避免 res 路径被目标项目占用。
+	var webp_script: Script = load("res://gdre/webp_recovery.gdc")
+	if webp_script == null:
+		_fail("ENGINE_INIT", "Could not load WebP recovery helper")
+		return
 	var settings: Object = Engine.get_singleton("GDRESettings")
 	if settings == null:
 		_fail("CORE_MISSING")
@@ -248,7 +252,7 @@ func _run() -> void:
 	if config != null:
 		config.set_setting("download_plugins", false, true)
 		config.set_setting("load_embedded_zips", false, true)
-		config.set_setting("max_cores_to_use", 2, true)
+		config.set_setting("max_cores_to_use", -1, true)
 	var output: String = request["output"]
 	if DirAccess.make_dir_recursive_absolute(output) != OK:
 		_fail("WRITE_FAILED", output)
@@ -259,6 +263,7 @@ func _run() -> void:
 		if key_error != OK:
 			_fail("BAD_KEY")
 			return
+	var raw_ready: bool = bool(request.get("rawReady", false))
 	_emit({"type": "progress", "stage": "probe"})
 	var paths: PackedStringArray = PackedStringArray(request["paths"])
 	var error: int = settings.load_project(paths, true)
@@ -295,12 +300,12 @@ func _run() -> void:
 		total += size
 		index.append({"path": rel, "size": size, "md5": info.get_md5().hex_encode(), "encrypted": info.is_encrypted()})
 	var raw: String = output.path_join("raw")
-	if not bool(request.get("rawReady", false)) and total > int(request.get("availableBytes", 9223372036854775807)):
+	if not raw_ready and total > int(request.get("availableBytes", 9223372036854775807)):
 		_fail("NO_SPACE")
 		return
 	var staging: String = output.path_join(".staging")
 	DirAccess.make_dir_recursive_absolute(staging)
-	if not bool(request.get("rawReady", false)):
+	if not raw_ready:
 		var done: int = 0
 		for position: int in range(infos.size()):
 			if _cancelled():
@@ -356,7 +361,7 @@ func _run() -> void:
 	else:
 		# 专用适配的索引包含独立验证的原始大小与摘要。
 		var previous_index: Variant = JSON.parse_string(FileAccess.get_file_as_string(output.path_join("raw-index.json")))
-		if not (previous_index is Array):
+		if not (previous_index is Array) or previous_index.size() > 200000:
 			_fail("READ_WRITE_FAILED", "raw-index.json")
 			return
 		index = previous_index
@@ -369,9 +374,9 @@ func _run() -> void:
 		_emit({"type": "result", "summary": {"engine": raw_version, "resources": index.size(), "scripts": 0}})
 		_finish()
 		return
-	_emit({"type": "progress", "stage": "recover", "totalFiles": infos.size()})
 	# 提取先于兼容加载，未知版本也保留已校验的原始资源。
-	settings.unload_project()
+	_emit({"type": "progress", "stage": "recover", "totalFiles": infos.size()})
+	settings.unload_project(true)
 	error = settings.load_project(paths, false)
 	if error != OK:
 		var diagnostic: String = settings.get_recent_error_string()
@@ -382,31 +387,76 @@ func _run() -> void:
 		return
 	var project: String = output.path_join("recovered")
 	DirAccess.make_dir_recursive_absolute(project)
-	var recover_files: PackedStringArray = PackedStringArray()
-	var snapshot_files: PackedStringArray = PackedStringArray()
+	var recover_set: Dictionary = {}
+	var snapshot_set: Dictionary = {}
+	var loaded_set: Dictionary = {}
 	var loaded_files: PackedStringArray = settings.get_file_list(PackedStringArray())
 	for path: String in loaded_files:
+		loaded_set[path] = true
 		if _selected(path):
-			recover_files.append(path)
+			recover_set[path] = true
 		elif _snapshot_selected(path):
-			snapshot_files.append(path)
+			snapshot_set[path] = true
+	var imports: Array = settings.get_import_files(false)
 	# 导入器按 dest_files 筛选，补齐所选源码对应的编译资源路径。
-	for import_info: Object in settings.get_import_files(false):
+	for import_info: Object in imports:
 		if _selected(import_info.get_source_file()):
 			for path: String in import_info.get_dest_files():
-				if path in loaded_files and path not in recover_files:
-					recover_files.append(path)
+				if loaded_set.has(path):
+					recover_set[path] = true
+					snapshot_set.erase(path)
 		elif _snapshot_selected(import_info.get_source_file()):
 			for path: String in import_info.get_dest_files():
-				if path in loaded_files and path not in recover_files and path not in snapshot_files:
-					snapshot_files.append(path)
+				if loaded_set.has(path) and not recover_set.has(path):
+					snapshot_set[path] = true
+	var recover_files: PackedStringArray = PackedStringArray(recover_set.keys())
+	var snapshot_files: PackedStringArray = PackedStringArray(snapshot_set.keys())
 	# 校验导入元数据中的输出路径，防止资源转换写出工作区。
-	for import_info: Object in settings.get_import_files(false):
+	for import_info: Object in imports:
 		for import_path: String in [import_info.get_source_file(), import_info.get_export_dest(), import_info.get_export_lossless_copy()]:
 			if not import_path.is_empty() and _relative(import_path).is_empty():
 				_fail("UNSAFE_PATH", import_path)
 				return
 	var summary: Dictionary = {"engine": settings.get_version_string(), "resources": index.size(), "scripts": 0, "failedScripts": 0, "converted": 0, "failedConversions": 0}
+	var direct_images: int = 0
+	var owners: Dictionary = {}
+	var source_owners: Dictionary = {}
+	for info: Object in imports:
+		var source: String = info.get_source_file()
+		source_owners[source] = int(source_owners.get(source, 0)) + 1
+		for path: String in info.get_dest_files():
+			owners[path] = int(owners.get(path, 0)) + 1
+	var webp_recovery: RefCounted = webp_script.new()
+	var image_jobs: Array = []
+	for info: Object in imports:
+		if _cancelled():
+			_finish()
+			return
+		if not _selected(info.get_source_file()) or int(owners.get(info.get_path(), 0)) != 1 or int(source_owners.get(info.get_source_file(), 0)) != 1 or not recover_set.has(info.get_path()):
+			continue
+		var source: String = info.get_source_file()
+		if source.get_extension().to_lower() != "webp":
+			continue
+		var relative: String = _relative(source)
+		var metadata_relative: String = _relative(info.get_import_md_path())
+		if relative.is_empty() or metadata_relative.is_empty():
+			_fail("UNSAFE_PATH", source)
+			return
+		image_jobs.append({"info": info, "relative": relative, "metadata": metadata_relative})
+	var restored_images: Dictionary = webp_recovery.restore(image_jobs, project, _cancelled)
+	if restored_images.has("canceled"):
+		_finish()
+		return
+	if restored_images.has("code"):
+		_fail(restored_images["code"], restored_images["detail"])
+		return
+	for image: Dictionary in restored_images["entries"]:
+		recover_set.erase(image["cache"])
+		snapshot_set.erase(image["cache"])
+		direct_images += 1
+	recover_files = PackedStringArray(recover_set.keys())
+	snapshot_files = PackedStringArray(snapshot_set.keys())
+	summary["directImages"] = direct_images
 	if not recover_files.is_empty():
 		var exporter: Object = ClassDB.instantiate("ImportExporter")
 		error = exporter.export_imports(project, recover_files)
@@ -424,6 +474,9 @@ func _run() -> void:
 	if not snapshot_files.is_empty():
 		var snapshot_exporter: Object = ClassDB.instantiate("ImportExporter")
 		snapshot_exporter.export_imports(project, snapshot_files)
+	if direct_images > 0:
+		if not _write_text(output.path_join("recovery-report.txt"), "\nDirectly restored lossless WebP images: %d (excluded from native conversion totals)\n" % direct_images, true):
+			return
 	# 缺少 .remap 的独立字节码不会进入导入器，按版本单独恢复。
 	if bool(request.get("scripts", true)) or bool(request.get("snapshot", false)):
 		var standalone_ok: int = 0

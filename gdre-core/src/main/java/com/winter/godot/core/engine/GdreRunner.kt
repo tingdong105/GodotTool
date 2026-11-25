@@ -97,7 +97,7 @@ class GdreRunner(private val context: Context) {
                 val bridge = ToolBridge(engine, request, canceled, dispatch)
                 trace.record("create_egl")
                 graphics.open()
-                val args = listOf("--script", "res://gdre/driver.gd", "--rendering-driver", "opengl3",
+                val args = listOf("--script", "res://gdre/driver.gdc", "--rendering-driver", "opengl3",
                     "--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--disable-render-loop",
                     "--disable_godot_splash", "--max-fps", "30", "--log-file", File(output, "engine.log").absolutePath)
                 trace.record("native_setup")

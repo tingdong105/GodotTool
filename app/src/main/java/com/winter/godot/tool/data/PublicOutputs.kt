@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -47,9 +48,11 @@ class PublicOutputs(private val root: File, private val describeReason: (String)
      * @param check 取消检查。
      * @param progress 未压缩字节进度。
      * @param destination 本任务此前预留或发布的 ZIP。
+     * @param checkpoint 是否为恢复前的阶段保存。
      * @return 已完整提交的 ZIP。
      */
-    fun publish(workspace: File, time: Long, check: () -> Unit, progress: (CoreProgress) -> Unit, destination: File? = null): File {
+    fun publish(workspace: File, time: Long, check: () -> Unit, progress: (CoreProgress) -> Unit, destination: File? = null,
+        checkpoint: Boolean = false): File {
         val boundary = workspace.canonicalFile.toPath()
         val files = mutableListOf<Pair<File, String>>()
         val options = File(workspace, "request-options.json").takeIf { it.isFile && it.length() in 1..8192 }?.let { JSONObject(it.readText()) }
@@ -83,9 +86,11 @@ class PublicOutputs(private val root: File, private val describeReason: (String)
         try {
             if (root.usableSpace < total + 1024 * 1024) throw CoreFailure("NO_SPACE", "Insufficient output capacity")
             var done = 0L
-            ZipOutputStream(temporary.outputStream().buffered()).use { zip ->
+            ZipOutputStream(temporary.outputStream().buffered(128 * 1024)).use { zip ->
                 snapshots.forEachIndexed { index, (file, relative, expected) ->
                     check()
+                    zip.setLevel(if (!checkpoint && file.extension.lowercase(Locale.ROOT) in compressedExtensions)
+                        Deflater.NO_COMPRESSION else Deflater.BEST_SPEED)
                     zip.putNextEntry(ZipEntry(relative))
                     val copied = file.inputStream().use { input ->
                         val update: (Long) -> Unit = { bytes -> progress(CoreProgress("publish", relative, done + bytes, total, index, files.size)) }
@@ -111,5 +116,10 @@ class PublicOutputs(private val root: File, private val describeReason: (String)
         } finally {
             temporary.delete()
         }
+    }
+
+    companion object {
+        private val compressedExtensions = setOf("png", "jpg", "jpeg", "webp", "gif", "ogg", "mp3", "flac", "aac", "m4a", "opus",
+            "mp4", "webm", "ogv", "mov", "mkv", "zip", "apk", "gz", "xz", "zst", "woff2")
     }
 }

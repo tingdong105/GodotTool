@@ -174,7 +174,8 @@
     <string name="ready_to_process">准备就绪</string>
     <string name="waiting_configuration">等待确认文件与配置</string>
     <string name="processing_logs">处理日志</string>
-    <string name="overall_progress">整体进度</string>
+    <string name="processing_duration">处理时长</string>
+    <string name="processing_duration_value">%1$02d:%2$02d</string>
     <string name="new_recovery">处理新文件</string>
     <string name="step_description">第 %1$d 步，%2$s</string>
     <string name="log_import">正在读取文件</string>

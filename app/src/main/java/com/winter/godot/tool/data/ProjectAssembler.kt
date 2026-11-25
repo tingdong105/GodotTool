@@ -6,6 +6,7 @@ import com.winter.godot.core.model.CoreFailure
 import com.winter.godot.core.model.CoreProgress
 import com.winter.godot.core.model.RecoverySelection
 import java.io.File
+import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -71,20 +72,15 @@ class ProjectAssembler {
         if (!stage.mkdir()) throw CoreFailure("WRITE_FAILED", "Cannot create project staging directory")
         try {
             val total = candidates.values.fold(0L) { sum, file -> Math.addExact(sum, file.length()) }
-            if (stage.usableSpace < total) throw CoreFailure("NO_SPACE", "Insufficient space for recovered project")
             var done = 0L
             candidates.entries.forEachIndexed { index, (path, source) ->
                 check()
                 val file = SafeFiles.resolve(stage, path)
                 file.parentFile?.mkdirs()
                 val size = source.length()
-                val copied = source.inputStream().use { input -> file.outputStream().use { output ->
-                    try {
-                        SafeFiles.copy(input, output, size, check) { bytes -> progress(CoreProgress("assemble", path, done + bytes, total, index, candidates.size)) }
-                    } catch (error: CoreFailure) {
-                        throw CoreFailure(error.code, "$path: ${error.message}; expected=$size, actual=${source.length()}")
-                    }
-                } }
+                val copied = linkOrCopy(source, file, size, check) { bytes ->
+                    progress(CoreProgress("assemble", path, done + bytes, total, index, candidates.size))
+                }
                 if (copied != size) throw CoreFailure("SIZE_CHANGED", path)
                 done += copied
             }
@@ -100,6 +96,38 @@ class ProjectAssembler {
             removeOwned(directory, stage)
             throw error
         }
+    }
+
+    /**
+     * 复用已停止写入的资源，文件系统不支持硬链接时回退复制。
+     * @param source 已完成恢复的源文件。
+     * @param target 工程暂存文件。
+     * @param size 预期大小。
+     * @param check 取消检查。
+     * @param progress 已整理字节数。
+     * @return 已整理字节数。
+     * @throws CoreFailure 空间不足或文件大小变化。
+     */
+    private fun linkOrCopy(source: File, target: File, size: Long, check: () -> Unit, progress: (Long) -> Unit): Long {
+        check()
+        val linked = try {
+            Files.createLink(target.toPath(), source.toPath())
+            true
+        } catch (_: UnsupportedOperationException) { false }
+        catch (_: IOException) { false }
+        catch (_: SecurityException) { false }
+        if (linked) {
+            if (target.length() != size) throw CoreFailure("SIZE_CHANGED", source.name)
+            progress(size)
+            return size
+        }
+        if (target.parentFile!!.usableSpace < size) throw CoreFailure("NO_SPACE", "Insufficient space for recovered project")
+        return source.inputStream().use { input -> target.outputStream().use { output ->
+            try { SafeFiles.copy(input, output, size, check, progress) }
+            catch (error: CoreFailure) {
+                throw CoreFailure(error.code, "${source.name}: ${error.message}; expected=$size, actual=${source.length()}")
+            }
+        } }
     }
 
     /**

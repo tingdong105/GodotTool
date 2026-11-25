@@ -1,5 +1,6 @@
 package com.winter.godot.tool.ui.components
 
+import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -17,13 +18,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
@@ -34,6 +41,7 @@ import com.winter.godot.tool.data.TaskLogLine
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.ui.theme.Theme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
@@ -59,8 +67,36 @@ fun TaskProgress(task: TaskRecord, modifier: Modifier = Modifier) {
                 style = Theme.typography.title.copy(fontFeatureSettings = "tnum"), color = MiuixTheme.colorScheme.primary)
         }
         LinearProgressIndicator(progress = progress)
-        Text(stringResource(R.string.overall_progress), style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.processing_duration), style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            ProcessingDuration(task)
+        }
     }
+}
+
+/**
+ * 按单调时钟逐秒更新耗时，离开前台暂停刷新，任务结束后固定显示。
+ * @param task 当前任务及持久化耗时。
+ */
+@Composable
+private fun ProcessingDuration(task: TaskRecord) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentTask by rememberUpdatedState(task)
+    var elapsed by remember(task.id, task.status) {
+        mutableLongStateOf(task.processingMillis(SystemClock.elapsedRealtime()))
+    }
+    LaunchedEffect(task.id, task.status, lifecycle) {
+        if (task.status != TaskStatus.RUNNING) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                elapsed = currentTask.processingMillis(SystemClock.elapsedRealtime())
+                delay(1000L - elapsed % 1000L)
+            }
+        }
+    }
+    val seconds = elapsed / 1000L
+    Text(stringResource(R.string.processing_duration_value, seconds / 60L, seconds % 60L),
+        style = Theme.typography.detail.copy(fontFeatureSettings = "tnum"), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
 }
 
 /**

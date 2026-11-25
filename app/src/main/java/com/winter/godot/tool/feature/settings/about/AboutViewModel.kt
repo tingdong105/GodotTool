@@ -63,10 +63,10 @@ class AboutViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val content = withContext(Dispatchers.IO) {
                     val assets = getApplication<Application>().assets
-                    val text = assets.open("licenses.txt").bufferedReader().use { it.readText() }
-                    val notice = assets.open("about-effect-notice.txt").bufferedReader().use { it.readText() }
-                    val imageNotice = assets.open("coil-notice.txt").bufferedReader().use { it.readText() }
-                    val glassNotice = assets.open("navigation-glass-notice.txt").bufferedReader().use { it.readText() }
+                    val text = assets.open("txt/licenses.txt").bufferedReader().use { it.readText() }
+                    val notice = assets.open("txt/about-effect-notice.txt").bufferedReader().use { it.readText() }
+                    val imageNotice = assets.open("txt/coil-notice.txt").bufferedReader().use { it.readText() }
+                    val glassNotice = assets.open("txt/navigation-glass-notice.txt").bufferedReader().use { it.readText() }
                     val complete = notice + "\n\n" + imageNotice + "\n\n" + glassNotice + "\n\n" + text
                     complete to splitLicenseText(complete)
                 }

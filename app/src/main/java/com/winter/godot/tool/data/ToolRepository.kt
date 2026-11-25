@@ -1,12 +1,14 @@
 package com.winter.godot.tool.data
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.tencent.mmkv.MMKV
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.task.EngineClient
+import com.winter.godot.tool.task.EngineExitDiagnostics
 import com.winter.godot.tool.ui.components.errorResource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -223,14 +225,16 @@ class ToolRepository(private val context: Context) {
      */
     private fun launchTask(record: TaskRecord, request: JSONObject) {
         check(active.value == null) { "Task already running" }
+        val running = record.copy(startedAtElapsedRealtime = SystemClock.elapsedRealtime())
         mutableActive.value = record.id
         mutableLogs.value = listOf(TaskLogLine("import", context.getString(R.string.log_import)))
-        mutableTasks.update { records -> listOf(record) + records.map { if (!it.acknowledged) it.copy(acknowledged = true) else it } }
+        mutableTasks.update { records -> listOf(running) + records.map { if (!it.acknowledged) it.copy(acknowledged = true) else it } }
         persistTasks()
-        try { client.start(request) }
+        try { client.start(request.put("startedAtElapsedRealtime", running.startedAtElapsedRealtime)) }
         catch (error: Throwable) {
             mutableActive.value = null
-            replace(record.copy(status = TaskStatus.FAILED, errorCode = "SERVICE_START", errorDetail = error.message.orEmpty()))
+            replace(running.copy(status = TaskStatus.FAILED, errorCode = "SERVICE_START", errorDetail = error.message.orEmpty(),
+                elapsedMillis = running.processingMillis(SystemClock.elapsedRealtime())))
             appendLog(TaskLogLine("error", context.getString(R.string.error_service), TaskLogLevel.ERROR))
             persistTasks()
         }
@@ -247,6 +251,8 @@ class ToolRepository(private val context: Context) {
         when (event.optString("type")) {
             "progress" -> {
                 val stage = event.optString("stage", current.stage)
+                val now = SystemClock.elapsedRealtime()
+                val elapsed = event.optLong("elapsedMillis", current.processingMillis(now)).coerceAtLeast(current.elapsedMillis)
                 val message = when (stage) {
                     "import" -> R.string.log_import
                     "probe", "decrypt" -> R.string.log_prepare
@@ -264,6 +270,7 @@ class ToolRepository(private val context: Context) {
                 }
                 replace(current.copy(stage = stage, path = event.optString("path"), bytes = event.optLong("bytes"),
                     totalBytes = event.optLong("totalBytes"), files = event.optInt("files"), totalFiles = event.optInt("totalFiles"),
+                    elapsedMillis = elapsed, startedAtElapsedRealtime = (now - elapsed).takeIf { it > 0L } ?: 0L,
                     overallProgress = maxOf(current.overallProgress, event.optDouble("overallProgress", current.overallProgress.toDouble()).toFloat()).coerceIn(0f, 0.99f)))
                 if (System.currentTimeMillis() - persistedAt > 1500) persistTasks()
             }
@@ -276,6 +283,7 @@ class ToolRepository(private val context: Context) {
                 val partial = summary.has("warning") || summary.optInt("failedScripts") > 0 || summary.optInt("failedConversions") > 0
                 // 先保存完成事件，索引可在下次打开工作区时重建。
                 replace(current.copy(status = if (partial) TaskStatus.PARTIAL else TaskStatus.SUCCEEDED, stage = "done", summary = summary.toString(), path = "", overallProgress = 1f,
+                    elapsedMillis = completedDuration(current, event),
                     selection = current.selection ?: summary.optJSONObject("selection")?.let(::recoverySelectionFromJson)))
                 appendLog(TaskLogLine("done", context.getString(if (partial) R.string.log_partial else R.string.log_complete),
                     if (partial) TaskLogLevel.WARNING else TaskLogLevel.SUCCESS))
@@ -296,7 +304,8 @@ class ToolRepository(private val context: Context) {
                     code == "CANCELED" -> TaskStatus.CANCELED
                     summary != null && summary.optInt("resources") > 0 -> TaskStatus.PARTIAL
                     else -> TaskStatus.FAILED
-                }, summary = summary?.toString() ?: current.summary, errorCode = code, errorDetail = event.optString("detail").take(3000)))
+                }, summary = summary?.toString() ?: current.summary, errorCode = code, errorDetail = event.optString("detail").take(3000),
+                    elapsedMillis = completedDuration(current, event)))
                 persistTasks()
             }
         }
@@ -308,18 +317,48 @@ class ToolRepository(private val context: Context) {
     private fun onDisconnected() {
         val id = active.value ?: return
         scope.launch {
-            val since = tasks.value.firstOrNull { it.id == id }?.createdAt ?: System.currentTimeMillis()
-            val result = withContext(Dispatchers.IO) { runCatching { workspaces.reconcileInterrupted(id, since) }.getOrElse { workspaces.result(id) } }
+            val task = tasks.value.firstOrNull { it.id == id } ?: return@launch
+            val since = task.createdAt
+            val (result, elapsed) = withContext(Dispatchers.IO) {
+                val event = runCatching { workspaces.reconcileInterrupted(id, since) }.getOrElse { workspaces.result(id) }
+                val saved = event?.let { savedDuration(it) }
+                val duration = saved ?: task.interruptedMillis(EngineExitDiagnostics.exitedAt(context, since,
+                    event?.optJSONObject("summary")?.optInt("enginePid") ?: 0))
+                if (event != null && saved == null) {
+                    event.put("elapsedMillis", duration)
+                    runCatching { workspaces.writeJson(id, "engine-result.json", event.toString()) }
+                }
+                event to duration
+            }
             if (result != null) onEvent(result)
             val current = tasks.value.firstOrNull { it.id == id }
             if (current?.status == TaskStatus.RUNNING) {
-                replace(current.copy(status = TaskStatus.INTERRUPTED, errorCode = "ENGINE_EXIT"))
+                replace(current.copy(status = TaskStatus.INTERRUPTED, errorCode = "ENGINE_EXIT",
+                    elapsedMillis = elapsed))
                 appendLog(TaskLogLine("error", context.getString(R.string.error_engine), TaskLogLevel.ERROR))
                 persistTasks()
             }
             mutableActive.value = null
         }
     }
+
+    /**
+     * 冻结服务记录的全程耗时，缺失记录时保留最后确认值。
+     * @param task 当前任务。
+     * @param event 终态事件。
+     * @return 可持久保存的处理毫秒数。
+     */
+    private fun completedDuration(task: TaskRecord, event: JSONObject): Long {
+        return savedDuration(event) ?: task.elapsedMillis
+    }
+
+    /**
+     * 读取服务确认的耗时，兼容旧版本终态格式。
+     * @param event 进度或终态事件。
+     * @return 非负处理毫秒数，记录缺失时为空。
+     */
+    private fun savedDuration(event: JSONObject): Long? = event.optLong("elapsedMillis",
+        event.optJSONObject("timings")?.optLong("totalMs", -1L) ?: -1L).takeIf { it >= 0L }
 
     /**
      * 保留有界且去重的用户日志。

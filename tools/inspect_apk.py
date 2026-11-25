@@ -34,14 +34,22 @@ def inspect(apk: Path, build_tools: Path) -> None:
                 segments += 1
             assert segments > 0, entry.filename
             print(entry.filename + ": 16 KB ELF alignment verified")
-        assert "get_import_files(false)" in archive.read("assets/gdre/driver.gd").decode("utf-8")
+        names = archive.namelist()
+        assert not any(name.startswith("assets/") and name.endswith(".gd") for name in names), "Unexpected GDScript source"
+        for name in ("driver", "webp_recovery"):
+            data = archive.read(f"assets/gdre/{name}.gdc")
+            assert len(data) >= 12 and data[:4] == b"GDSC" and struct.unpack_from("<I", data, 4)[0] == 101, name
+        assert [name for name in names if name.startswith("assets/") and name.endswith("/project.godot")] == ["assets/project.godot"]
         assert 'config/name="GodotTool Core"' in archive.read("assets/project.godot").decode("utf-8")
-        assert "assets/licenses.txt" in archive.namelist()
-        assert "Capstone" in archive.read("assets/licenses.txt").decode("utf-8")
+        for name in ("licenses.txt", "about-effect-notice.txt", "coil-notice.txt", "navigation-glass-notice.txt"):
+            assert f"assets/{name}" not in names, name
+            assert archive.read(f"assets/txt/{name}"), name
+        assert "Capstone" in archive.read("assets/txt/licenses.txt").decode("utf-8")
         assert "lib/arm64-v8a/libcnm_capstone.so" in archive.namelist()
         locator = archive.read("lib/arm64-v8a/libcnm_capstone.so")
         assert b"Java_com_winter_godot_tool_feature_CNM_CapstoneLocator_nativeReferences" in locator
         dex = b"".join(archive.read(name) for name in archive.namelist() if name.endswith(".dex"))
+        assert b"res://gdre/driver.gdc" in dex, "Missing compiled driver entry"
         assert b"Lcom/winter/godot/core/engine/OffscreenRenderView;" in dex, "JNI offscreen view was removed or renamed"
         assert b"Lcom/winter/godot/tool/feature/CNM/CapstoneLocator;" in dex, "Capstone JNI class was removed or renamed"
         assert b"nativeReferences" in dex, "Capstone JNI entry was renamed"

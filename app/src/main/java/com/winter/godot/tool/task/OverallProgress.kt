@@ -36,3 +36,33 @@ internal fun overallProgress(previous: Float, event: JSONObject): Float {
     val completed = if (stage == "import" && totalFiles > 0) (files + fraction) / totalFiles else fraction
     return maxOf(previous, start + (end - start) * completed.toFloat()).coerceIn(0f, 0.99f)
 }
+
+/**
+ * 合并文件计数与字节计数进度，保留阶段切换和首次完成事件。
+ * @author Tingdong
+ * @date 2026-11-25
+ */
+internal class ProgressGate {
+    private var stage = ""
+    private var emittedAt = 0L
+    private var completed = false
+
+    /**
+     * 判断本次进度是否需要跨进程发送。
+     * @param event 原始进度。
+     * @param now 单调时钟毫秒数。
+     * @return 阶段切换、完成或距上次发送达到间隔时为真。
+     */
+    fun accept(event: JSONObject, now: Long): Boolean {
+        val nextStage = event.optString("stage")
+        val totalFiles = event.optInt("totalFiles")
+        val totalBytes = event.optLong("totalBytes")
+        val complete = if (totalFiles > 0) event.optInt("files") >= totalFiles
+            else totalBytes > 0 && event.optLong("bytes") >= totalBytes
+        if (nextStage == stage && now - emittedAt < 120 && !(complete && !completed)) return false
+        stage = nextStage
+        emittedAt = now
+        completed = complete
+        return true
+    }
+}

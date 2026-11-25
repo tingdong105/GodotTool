@@ -16,6 +16,25 @@ import java.util.concurrent.TimeUnit
  */
 object EngineExitDiagnostics {
     /**
+     * 查询当前任务对应核心的退出时间，旧系统或记录缺失时返回空。
+     * 使用示例：EngineExitDiagnostics.exitedAt(context, task.createdAt, enginePid)。
+     * @param context 主应用环境。
+     * @param since 当前任务开始时间。
+     * @param pid 已知核心进程标识，零表示按当前串行任务匹配。
+     * @return 系统退出时间，单位为墙上时钟毫秒。
+     */
+    fun exitedAt(context: Context, since: Long, pid: Int): Long? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        return runCatching {
+            val now = System.currentTimeMillis()
+            context.getSystemService(ActivityManager::class.java)
+                .getHistoricalProcessExitReasons(context.packageName, pid.coerceAtLeast(0), 16).firstOrNull {
+                    it.processName == "${context.packageName}:engine" && it.timestamp in since..now && (pid <= 0 || it.pid == pid)
+                }?.timestamp
+        }.getOrNull()
+    }
+
+    /**
      * 查询本次引擎退出，不混入其他任务或进程的记录。
      * @param context 主应用环境。
      * @param directory 公共结果目录。

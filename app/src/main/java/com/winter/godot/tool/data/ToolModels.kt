@@ -77,6 +77,8 @@ data class TaskRecord(
     val selection: RecoverySelection? = null,
     val acknowledged: Boolean = false,
     val snapshot: SnapshotOptions = SnapshotOptions(),
+    val elapsedMillis: Long = 0,
+    val startedAtElapsedRealtime: Long = 0,
 ) {
     /**
      * 将摘要序列化为可迁移的 JSON。
@@ -85,6 +87,28 @@ data class TaskRecord(
         .put("status", status.name).put("stage", stage).put("path", path).put("bytes", bytes).put("totalBytes", totalBytes)
         .put("files", files).put("totalFiles", totalFiles).put("errorCode", errorCode).put("errorDetail", errorDetail).put("summary", summary)
         .put("overallProgress", overallProgress).put("selection", selection?.toJson()).put("acknowledged", acknowledged).put("snapshot", snapshot.generate)
+        .put("elapsedMillis", elapsedMillis)
+
+    /**
+     * 计算处理时长，已结束的任务返回固定耗时。
+     * 使用示例：task.processingMillis(SystemClock.elapsedRealtime())。
+     * @param elapsedRealtime 当前开机后的单调时钟毫秒数。
+     * @return 从开始处理到当前或终态的毫秒数。
+     */
+    fun processingMillis(elapsedRealtime: Long): Long = when {
+        status != TaskStatus.RUNNING -> elapsedMillis
+        startedAtElapsedRealtime > 0 && elapsedRealtime >= startedAtElapsedRealtime -> elapsedRealtime - startedAtElapsedRealtime
+        else -> elapsedMillis
+    }
+
+    /**
+     * 用系统退出时间冻结中断耗时，缺失记录时保留最后确认值。
+     * 使用示例：task.interruptedMillis(processExitTime)。
+     * @param exitedAt 系统记录的进程退出时间，未知时为空。
+     * @return 不包含重新打开前等待时间的处理毫秒数。
+     */
+    fun interruptedMillis(exitedAt: Long?): Long = if (exitedAt != null && exitedAt >= createdAt)
+        maxOf(elapsedMillis, exitedAt - createdAt) else elapsedMillis
 
     companion object {
         /**
@@ -104,7 +128,8 @@ data class TaskRecord(
                 json.optLong("bytes").coerceAtLeast(0), json.optLong("totalBytes").coerceAtLeast(0), json.optInt("files").coerceAtLeast(0),
                 json.optInt("totalFiles").coerceAtLeast(0), json.optString("errorCode"), json.optString("errorDetail"), summary,
                 json.optDouble("overallProgress", if (json.optString("stage") == "done") 1.0 else 0.0).toFloat().coerceIn(0f, 1f),
-                selection?.let(::recoverySelectionFromJson), json.optBoolean("acknowledged", status != TaskStatus.RUNNING), SnapshotOptions(json.optBoolean("snapshot")))
+                selection?.let(::recoverySelectionFromJson), json.optBoolean("acknowledged", status != TaskStatus.RUNNING), SnapshotOptions(json.optBoolean("snapshot")),
+                json.optLong("elapsedMillis").coerceAtLeast(0L))
         }
     }
 }

@@ -66,7 +66,7 @@ object RecoveryReport {
                     appendLine("| 项目 | 数量 |")
                     appendLine("| :---: | :---: |")
                     for ((key, label) in listOf("rawResources" to "原始资源", "resources" to if (result.has("projectFiles")) "输出文件" else "资源条目", "scripts" to "可读脚本",
-                        "failedScripts" to "脚本恢复失败", "converted" to "资源转换成功", "failedConversions" to "资源转换失败")) {
+                        "failedScripts" to "脚本恢复失败", "converted" to "资源转换成功", "directImages" to "原样提取图片", "failedConversions" to "资源转换失败")) {
                         if (result.has(key)) appendLine("| $label | ${result.optLong(key)} |")
                     }
                     Regex("(?m)^Lossy:\\s*(\\d+)").find(details)?.groupValues?.get(1)?.let { appendLine("| 有损恢复 | $it |") }

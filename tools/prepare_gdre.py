@@ -70,11 +70,21 @@ def prepare() -> None:
     VENDOR.mkdir(parents=True, exist_ok=True)
     marker = VENDOR / "prepared.json"
     versions = tomllib.loads((ROOT / "gradle/libs.versions.toml").read_text(encoding="utf-8"))["versions"]
-    expected = {"schema": 6, "gdre": "2.7.4", "engine": ENGINE_COMMIT, "apkSha256": APK_SHA256,
+    expected = {"schema": 7, "gdre": "2.7.4", "engine": ENGINE_COMMIT, "apkSha256": APK_SHA256,
                 "miuix": versions["miuix"], "mmkv": versions["mmkv"], "capstone": versions["capstone"]}
-    if marker.is_file() and json.loads(marker.read_text()) == expected:
-        print("GDRE 2.7.4 core ready", flush=True)
-        return
+    if marker.is_file():
+        cached = json.loads(marker.read_text())
+        if cached.get("schema") in (6, 7) and {**cached, "schema": 7} == expected:
+            previous = VENDOR / "assets" / "licenses.txt"
+            current = VENDOR / "assets" / "txt" / "licenses.txt"
+            if previous.is_file():
+                current.parent.mkdir(parents=True, exist_ok=True)
+                previous.replace(current)
+            if current.is_file():
+                if cached != expected:
+                    marker.write_text(json.dumps(expected, indent=2), encoding="utf-8")
+                print("GDRE 2.7.4 core ready", flush=True)
+                return
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         apk = pool.submit(download, APK_URL, CACHE / "gdre-2.7.4.apk", APK_SHA256)
         source = pool.submit(download, f"https://codeload.github.com/nikitalita/godot/zip/{ENGINE_COMMIT}", CACHE / f"godot-{ENGINE_COMMIT}.zip")
@@ -113,9 +123,10 @@ def prepare() -> None:
         path = download(url, CACHE / (name.replace(" ", "-").replace("/", "-") + "-LICENSE.txt"))
         licenses.append(name + "\n" + url + "\n\n" + path.read_text(encoding="utf-8"))
     licenses.append("AndroidX / Kotlin / kotlinx.coroutines\nhttps://www.apache.org/licenses/LICENSE-2.0\nLicensed under the Apache License, Version 2.0.\n" + licenses[2].split("\n\n", 1)[-1])
-    assets = VENDOR / "assets"
-    assets.mkdir(exist_ok=True)
+    assets = VENDOR / "assets" / "txt"
+    assets.mkdir(parents=True, exist_ok=True)
     (assets / "licenses.txt").write_text("\n\n".join(licenses), encoding="utf-8")
+    (VENDOR / "assets" / "licenses.txt").unlink(missing_ok=True)
     marker.write_text(json.dumps(expected, indent=2), encoding="utf-8")
     print("GDRE 2.7.4 Android core and bridge sources prepared", flush=True)
 
