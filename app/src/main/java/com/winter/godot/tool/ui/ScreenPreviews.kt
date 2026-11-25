@@ -6,8 +6,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.winter.godot.core.model.RecoverySelection
+import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
@@ -18,7 +20,11 @@ import com.winter.godot.tool.feature.compare.CompareUiState
 import com.winter.godot.tool.feature.compare.ComparisonRecord
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
 import com.winter.godot.tool.feature.compare.ComparisonRow
+import com.winter.godot.tool.feature.compare.ComparisonRule
 import com.winter.godot.tool.feature.compare.MethodChange
+import com.winter.godot.tool.feature.compare.RuleMatch
+import com.winter.godot.tool.feature.compare.RuleSort
+import com.winter.godot.tool.feature.compare.RuleTarget
 import com.winter.godot.tool.feature.compare.SnapshotHeader
 import com.winter.godot.tool.feature.files.BrowserFile
 import com.winter.godot.tool.feature.files.FilePickerScreen
@@ -26,6 +32,9 @@ import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.sortBrowserFiles
 import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
+import com.winter.godot.tool.feature.settings.ComparisonRuleEditor
+import com.winter.godot.tool.feature.settings.ComparisonRulesScreen
+import com.winter.godot.tool.feature.settings.ComparisonRulesSortButton
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.settings.about.AboutScreen
 import com.winter.godot.tool.feature.settings.about.AboutUiState
@@ -161,6 +170,55 @@ private fun TasksSelectionPreview() { GodotToolTheme {
 @ScreenPreviews
 @Composable
 private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), false, {}, {}) } } }
+
+/**
+ * 过滤规则空列表的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonRulesEmptyPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_RULES,
+    actions = { ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> } }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false), { _, _ -> }, {}, {}, {})
+} } }
+
+// 预览规则使用稳定身份与创建时间。
+private val exampleComparisonRules = listOf(
+    ComparisonRule("aliyun", exclude = true, note = "忽略云服务相关结果", id = "11111111-1111-1111-1111-111111111111", createdAt = 1),
+    ComparisonRule("addons/", RuleMatch.PREFIX, true, RuleTarget.PATH, id = "22222222-2222-2222-2222-222222222222", createdAt = 2),
+    ComparisonRule("login", RuleMatch.EXACT, true, RuleTarget.METHOD, id = "33333333-3333-3333-3333-333333333333", createdAt = 3))
+
+/**
+ * 过滤规则列表的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonRulesPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_RULES,
+    actions = { ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> } }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false, rules = exampleComparisonRules), { _, _ -> }, {}, {}, {})
+} } }
+
+/**
+ * 过滤规则多选与删除 FAB 的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonRulesSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_RULES,
+    titleOverride = stringResource(R.string.tasks_selected, 1), actions = {
+        TasksSelectAllButton(false, true, {})
+        ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> }
+    }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false, rules = exampleComparisonRules,
+        selectedRules = setOf(exampleComparisonRules.first().id)), { _, _ -> }, {}, {}, {})
+} } }
+
+/**
+ * 过滤规则编辑表单的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonRuleEditorPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_RULES) {
+    ComparisonRuleEditor(exampleComparisonRules.first(), true, false, null, {}, {}, {})
+} } }
 
 /**
  * 关于页的手机与平板明暗预览。

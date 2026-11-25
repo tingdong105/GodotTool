@@ -128,7 +128,7 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
     val selections = remember(state.viewingId) { ResultSelections() }
     val title = state.record?.let(ComparisonText::title) ?: stringResource(R.string.compare_result)
     val contentWidth = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
-    LaunchedEffect(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode) {
+    LaunchedEffect(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision) {
         selections.clear()
         list.scrollToItem(0)
     }
@@ -190,10 +190,10 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                         thumbColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.45f),
                     )
                     val horizontal = rememberScrollState()
-                    var widestLine by remember(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, scale) { mutableIntStateOf(0) }
+                    var widestLine by remember(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision, scale) { mutableIntStateOf(0) }
                     val readerWidth = with(density) { ComparisonReaderLayout.width(constraints.maxWidth, constraints.maxHeight, widestLine,
                         (Theme.spacing.lg * 2).roundToPx(), state.wrapLines).toDp() }
-                    LaunchedEffect(state.wrapLines, state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode) { horizontal.scrollTo(0) }
+                    LaunchedEffect(state.wrapLines, state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision) { horizontal.scrollTo(0) }
                     // 整个阅读区共用一个横向滚动容器，最长已显示行决定内容宽度。
                     if (state.opening || state.filtering) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

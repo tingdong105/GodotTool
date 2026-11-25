@@ -91,7 +91,8 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
                     Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                         TextButton(stringResource(R.string.compare_swap), onSwap, Modifier.weight(1f), enabled = !state.busy)
                         if (state.busy) TextButton(stringResource(R.string.cancel), onCancel, Modifier.weight(1f))
-                        else PrimaryButton(stringResource(R.string.compare_start), onStart, Modifier.weight(1f), enabled = state.before != null && state.after != null)
+                        else PrimaryButton(stringResource(R.string.compare_start), onStart, Modifier.weight(1f), enabled = state.before != null && state.after != null &&
+                            !state.rulesLoading && !state.rulesLoadFailed && !state.rulesSaving)
                     }
                 }
             }

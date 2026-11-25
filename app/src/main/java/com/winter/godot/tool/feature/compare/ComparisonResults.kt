@@ -37,10 +37,12 @@ object ComparisonResults {
      * @param kind 变化类别，空值为全部。
      * @param plugins 是否包含插件。
      * @param mode 当前查看范围。
+     * @param rules 当前已编译的过滤规则。
      * @param check 取消检查。
      * @return 可复用的方法位置索引及分类统计。
      */
-    fun index(result: ComparisonResult, query: String, kind: ChangeKind?, plugins: Boolean, mode: ComparisonMode = ComparisonMode.METHODS, check: () -> Unit): ComparisonIndex {
+    fun index(result: ComparisonResult, query: String, kind: ChangeKind?, plugins: Boolean, mode: ComparisonMode = ComparisonMode.METHODS,
+        rules: ComparisonRules = ComparisonRules(emptyList()), check: () -> Unit): ComparisonIndex {
         val counts = MutableList(ChangeKind.entries.size) { 0 }
         val groups = List(ChangeKind.entries.size) { mutableListOf<Long>() }
         if (mode == ComparisonMode.FOCUS || mode == ComparisonMode.CONSTANTS && !result.membersAvailable)
@@ -51,7 +53,7 @@ object ComparisonResults {
                 if (!plugins && entry.plugin) return@forEachIndexed
                 SnapshotDiff.read(file, entry, result.dataVersion).changes.forEachIndexed methods@ { methodIndex, change ->
                     check()
-                    if (!mode.includes(change)) return@methods
+                    if (!mode.includes(change) || rules.excludes(entry.path, change)) return@methods
                     counts[change.kind.ordinal]++
                     if (kind != null && change.kind != kind) return@methods
                     if (query.isNotBlank() && listOf(entry.path, change.key, change.before, change.after, ComparisonText.line(entry.path, change))

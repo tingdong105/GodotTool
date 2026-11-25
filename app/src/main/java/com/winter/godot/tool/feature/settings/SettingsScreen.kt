@@ -53,6 +53,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 分组管理外观、恢复偏好、存储和关于入口。
  * @param onAbout 打开关于软件页面。
+ * @param onComparisonRules 打开对比过滤规则设置。
  * @param onChange 即时保存外观与解包选项。
  * @param onThemeChange 立即提交主题及点击位置的窗口坐标。
  * @param onThemePrepare 打开菜单前准备不含菜单的截图。
@@ -61,7 +62,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit,
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
-    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}) {
+    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}) {
     var clearing by remember { mutableStateOf(false) }
     val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
     val bottomInset = LocalRootBottomInset.current
@@ -87,6 +88,12 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
             Card {
                 RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) }, embedded = true)
                 SwitchPreference(settings.snapshot.generate, { onChange(settings.copy(snapshot = SnapshotOptions(it))) }, stringResource(R.string.generate_snapshot))
+            }
+        }
+        item {
+            SectionTitle(stringResource(R.string.compare))
+            Card {
+                ArrowPreference(title = stringResource(R.string.compare_filter_rules), onClick = onComparisonRules)
             }
         }
         item {

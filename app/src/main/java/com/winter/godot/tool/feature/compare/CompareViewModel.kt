@@ -45,6 +45,8 @@ data class CompareUiState(
     val includePlugins: Boolean = false, val query: String = "", val searchExpanded: Boolean = false, val filter: ChangeKind? = null, val focusOnly: Boolean = false,
     val filtering: Boolean = false, val counts: List<Int> = List(ChangeKind.entries.size) { 0 },
     val stars: Set<String> = emptySet(), val rules: List<ComparisonRule> = emptyList(), val rulesSaving: Boolean = false,
+    val rulesLoading: Boolean = true, val rulesLoadFailed: Boolean = false, val rulesError: Int? = null, val rulesRevision: Int = 0,
+    val selectedRules: Set<String> = emptySet(), val ruleSort: RuleSort = RuleSort.TIME, val rulesReversed: Boolean = true,
     val publishing: Boolean = false, val error: Int? = null,
     val matchedCounts: List<Int> = List(ChangeKind.entries.size) { 0 },
     val loadingMore: Boolean = false, val loadMoreFailed: Boolean = false, val wrapLines: Boolean = true,
@@ -67,8 +69,11 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         { path, change -> SnapshotReasonText.line(application, path, change) })
     private val rulesFile = File(application.filesDir, "comparison-rules.json")
     private val readerPreferences = MMKV.mmkvWithID("comparison-reader-v1", MMKV.SINGLE_PROCESS_MODE)
+    private val initialRuleSort = RuleSort.entries.firstOrNull { it.name == readerPreferences.decodeString("rules-sort", RuleSort.TIME.name) } ?: RuleSort.TIME
     private val mutableUi = MutableStateFlow(CompareUiState(includePlugins = saved["comparisonPlugins"] ?: false,
-        wrapLines = readerPreferences.decodeBool("wrap-lines", true)))
+        wrapLines = readerPreferences.decodeBool("wrap-lines", true), ruleSort = initialRuleSort,
+        rulesReversed = readerPreferences.decodeBool("rules-reversed", initialRuleSort.defaultReversed),
+        selectedRules = saved.get<ArrayList<String>>("comparisonSelectedRules")?.toSet().orEmpty()))
     val ui = mutableUi.asStateFlow()
     private var beforeJob: Job? = null
     private var afterJob: Job? = null
@@ -79,6 +84,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     private var historyJob: Job? = null
     private var openJob: Job? = null
     private var ruleJob: Job? = null
+    private var rulesLoadJob: Job? = null
     private var starJob: Job? = null
     private var publishJob: Job? = null
 
@@ -89,11 +95,8 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
             if (source != null) select(old, source, restoring = true)
         }
         refreshHistory()
-        viewModelScope.launch {
-            val rules = withContext(Dispatchers.IO) { runCatching { ComparisonRules.load(rulesFile) }.getOrDefault(emptyList()) }
-            mutableUi.update { it.copy(rules = rules) }
-            if (restoredRecord != null) open(restoredRecord)
-        }
+        loadRules()
+        if (restoredRecord != null) open(restoredRecord)
     }
 
     /**
@@ -154,7 +157,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      */
     fun start() {
         val state = ui.value
-        if (state.busy) return
+        if (state.busy || state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
         val old = state.before ?: return; val new = state.after ?: return
         closeResult()
         mutableUi.update { it.copy(running = true, processed = 0, error = null) }
@@ -167,7 +170,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
                     val result = SnapshotDiff.compare(old.cache, new.cache, file, { context.ensureActive() }) { count ->
                         if (count % 32 == 0) mutableUi.update { it.copy(processed = count) }
                     }
-                    val record = history.save(result, old.header.name.ifBlank { old.name }, new.header.name.ifBlank { new.name }, emptyList()) { context.ensureActive() }
+                    val record = history.save(result, old.header.name.ifBlank { old.name }, new.header.name.ifBlank { new.name }, state.rules) { context.ensureActive() }
                     try { history.publish(record) { context.ensureActive() } }
                     catch (error: CancellationException) { throw error }
                     catch (_: Exception) { record }
@@ -376,21 +379,122 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     }
 
     /**
-     * 添加或移除排除、关注规则。
-     * @param rule 待处理规则。
-     * @param remove 是否移除。
+     * 加载全局过滤规则，失败保留文件并允许重试。
      */
-    fun rule(rule: ComparisonRule, remove: Boolean = false) {
-        if (ui.value.rulesSaving) return
-        val normalized = try { ComparisonRules.validate(rule) } catch (_: Exception) { mutableUi.update { it.copy(error = R.string.compare_rule_invalid) }; return }
-        val next = if (remove) ui.value.rules - normalized else (ui.value.rules + normalized).distinct()
-        mutableUi.update { it.copy(rulesSaving = true) }
+    fun loadRules() {
+        if (ui.value.rulesSaving || rulesLoadJob?.isActive == true) return
+        mutableUi.update { it.copy(rulesLoading = true, rulesLoadFailed = false, rulesError = null) }
+        rulesLoadJob = viewModelScope.launch {
+            try {
+                val rules = withContext(Dispatchers.IO) { ComparisonRules.load(rulesFile) }
+                val selected = ui.value.selectedRules.intersect(rules.filter { it.exclude }.map { it.id }.toSet())
+                saved["comparisonSelectedRules"] = ArrayList(selected)
+                mutableUi.update { it.copy(rules = rules, rulesLoading = false, selectedRules = selected) }
+                filterResults()
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) {
+                mutableUi.update { it.copy(rulesLoading = false, rulesLoadFailed = true, rulesError = R.string.compare_rules_load_failed) }
+                filterResults()
+            }
+        }
+    }
+
+    /**
+     * 添加或替换一条过滤规则，成功后刷新已有结果。
+     * @param original 编辑前的规则，新增时为空。
+     * @param rule 表单提交的规则。
+     */
+    fun saveRule(original: ComparisonRule?, rule: ComparisonRule) {
+        val state = ui.value
+        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
+        val normalized = try { ComparisonRules.validate(rule.copy(exclude = true, id = original?.id ?: UUID.randomUUID().toString(),
+            createdAt = original?.createdAt ?: System.currentTimeMillis())) }
+        catch (_: Exception) { mutableUi.update { it.copy(rulesError = R.string.compare_rule_invalid) }; return }
+        val position = original?.let { state.rules.indexOf(it) }
+        if (position != null && position < 0) return
+        val next = state.rules.toMutableList().apply {
+            if (position == null) add(normalized) else set(position, normalized)
+        }.distinct()
+        persistRules(next)
+    }
+
+    /**
+     * 删除确认时固定的一组过滤规则。
+     * @param ids 已确认删除的规则身份集合。
+     */
+    fun deleteRules(ids: Set<String>) {
+        val state = ui.value
+        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || ids.isEmpty()) return
+        val next = state.rules.filterNot { it.exclude && it.id in ids }
+        if (next.size != state.rules.size) persistRules(next)
+    }
+
+    /**
+     * 切换一条规则的勾选状态。
+     * @param id 规则的稳定身份。
+     */
+    fun selectRule(id: String) {
+        val state = ui.value
+        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || state.rules.none { it.exclude && it.id == id }) return
+        setRuleSelection(if (id in state.selectedRules) state.selectedRules - id else state.selectedRules + id)
+    }
+
+    /**
+     * 全选过滤规则或取消当前全选。
+     */
+    fun selectAllRules() {
+        val state = ui.value
+        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
+        val ids = state.rules.filter { it.exclude }.map { it.id }.toSet()
+        setRuleSelection(if (ids == state.selectedRules) emptySet() else ids)
+    }
+
+    /**
+     * 返回键退出多选，保存期间保留选择。
+     */
+    fun clearRuleSelection() {
+        if (!ui.value.rulesSaving) setRuleSelection(emptySet())
+    }
+
+    /**
+     * 保存规则列表的排序偏好，不改变规则及勾选。
+     * @param order 时间或名称排序。
+     * @param reversed 用户选择的逆向开关。
+     */
+    fun sortRules(order: RuleSort, reversed: Boolean) {
+        readerPreferences.encode("rules-sort", order.name)
+        readerPreferences.encode("rules-reversed", reversed)
+        mutableUi.update { it.copy(ruleSort = order, rulesReversed = reversed) }
+    }
+
+    /**
+     * 同步多选状态及页面恢复数据。
+     * @param ids 当前勾选的规则集合。
+     */
+    private fun setRuleSelection(ids: Set<String>) {
+        saved["comparisonSelectedRules"] = ArrayList(ids)
+        mutableUi.update { it.copy(selectedRules = ids) }
+    }
+
+    /**
+     * 串行提交规则文件，保存失败时保留原有状态。
+     * @param next 待持久化的完整规则列表。
+     */
+    private fun persistRules(next: List<ComparisonRule>) {
+        if (next.size > 256) {
+            mutableUi.update { it.copy(rulesError = R.string.compare_rule_invalid) }
+            return
+        }
+        mutableUi.update { it.copy(rulesSaving = true, rulesError = null) }
         ruleJob = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { ComparisonRules.save(rulesFile, next) }
-                mutableUi.update { it.copy(rules = next, rulesSaving = false, error = null) }; filterResults()
+                val selected = ui.value.selectedRules.intersect(next.filter { it.exclude }.map { it.id }.toSet())
+                saved["comparisonSelectedRules"] = ArrayList(selected)
+                mutableUi.update { it.copy(rules = next, rulesSaving = false, rulesError = null, rulesRevision = it.rulesRevision + 1, selectedRules = selected) }
+                filterResults()
             } catch (error: CancellationException) { throw error }
-            catch (_: Exception) { mutableUi.update { it.copy(rulesSaving = false, error = R.string.compare_rule_invalid) } }
+            catch (_: Exception) { mutableUi.update { it.copy(rulesSaving = false, rulesError = R.string.compare_rules_save_failed) } }
         }
     }
 
@@ -400,13 +504,19 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     private fun filterResults() {
         filterJob?.cancel(); moreJob?.cancel(); resultIndex = null
         val state = ui.value; val result = state.result ?: return
+        if (state.rulesLoading || state.rulesLoadFailed) {
+            mutableUi.update { it.copy(filtering = state.rulesLoading, rows = emptyList(), totalRows = 0,
+                counts = List(ChangeKind.entries.size) { 0 }, matchedCounts = List(ChangeKind.entries.size) { 0 },
+                loadingMore = false, loadMoreFailed = false, error = if (state.rulesLoadFailed) R.string.compare_rules_load_failed else null) }
+            return
+        }
         mutableUi.update { it.copy(filtering = true, rows = emptyList(), totalRows = 0, loadingMore = false, loadMoreFailed = false, error = null) }
         filterJob = viewModelScope.launch {
             try {
                 val filtered = withContext(Dispatchers.IO) {
                     val context = coroutineContext
-                    // 关注与规则暂时停止应用，保留私有配置供后续恢复入口。
-                    val index = ComparisonResults.index(result, state.query, state.filter, state.includePlugins, state.viewMode) { context.ensureActive() }
+                    val rules = ComparisonRules(state.rules.filter { it.exclude })
+                    val index = ComparisonResults.index(result, state.query, state.filter, state.includePlugins, state.viewMode, rules) { context.ensureActive() }
                     index to ComparisonResults.read(index, 0) { context.ensureActive() }
                 }
                 resultIndex = filtered.first
@@ -436,7 +546,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 回收会话缓存，持久历史独立保留。
      */
     override fun onCleared() {
-        val jobs = listOfNotNull(beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, starJob, publishJob)
+        val jobs = listOfNotNull(beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, rulesLoadJob, starJob, publishJob)
         jobs.forEach { it.cancel() }
         val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         cleanup.launch {
