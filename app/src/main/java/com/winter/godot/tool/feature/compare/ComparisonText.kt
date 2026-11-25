@@ -20,7 +20,7 @@ object ComparisonText {
         val name = change.key.substringAfterLast("]::")
         if (change.mode == ComparisonMode.CONSTANTS) {
             val scope = name.substringBeforeLast('.', "")
-            return "${singleLine(path.replace('\\', '/'))} -> ${if (scope.isNotEmpty()) "${singleLine(scope)}::" else ""}${compact(signature).trimEnd(';')};"
+            return "${singleLine(path.replace('\\', '/'))} -> ${if (scope.isNotEmpty()) "${singleLine(scope)}::" else ""}${compact(fieldDeclaration(signature)).trimEnd(';')};"
         }
         return "${singleLine(path.replace('\\', '/'))} -> ${singleLine(name)}(${compact(parameters(signature))});"
     }
@@ -32,6 +32,50 @@ object ComparisonText {
      * @return 旧版到新版的标题。
      */
     fun title(record: ComparisonRecord): String = "${record.before.version.ifBlank { record.oldName }} → ${record.after.version.ifBlank { record.newName }}"
+
+    /**
+     * 定位展示行中的字段名，保留路径与作用域的普通字重。
+     * 使用示例：ComparisonText.fieldNameRange("player.gd", change)。
+     * @param path 原项目脚本路径。
+     * @param change 当前字段差异。
+     * @return 字段名范围，非字段条目为空。
+     */
+    fun fieldNameRange(path: String, change: MethodChange): IntRange? {
+        if (change.mode != ComparisonMode.CONSTANTS || change.kind == ChangeKind.UNKNOWN || change.key.isEmpty()) return null
+        val name = change.key.substringAfterLast("]::")
+        val scope = name.substringBeforeLast('.', "")
+        val start = singleLine(path.replace('\\', '/')).length + 4 + if (scope.isEmpty()) 0 else singleLine(scope).length + 2
+        return start until start + singleLine(name.substringAfterLast('.')).length
+    }
+
+    /**
+     * 跳过字段注解及声明关键字，保护注解参数中的字符串与括号。
+     * 使用示例：fieldDeclaration("@export var speed: int = 10")。
+     * @param signature 完整字段声明。
+     * @return 从字段名开始的声明文本。
+     */
+    private fun fieldDeclaration(signature: String): String {
+        var cursor = 0
+        while (cursor < signature.length) {
+            while (signature.getOrNull(cursor)?.isWhitespace() == true) cursor++
+            if (signature.getOrNull(cursor) != '@') break
+            cursor++
+            while (signature.getOrNull(cursor)?.isWhitespace() == true) cursor++
+            while (signature.getOrNull(cursor)?.let { it.isLetterOrDigit() || it == '_' } == true) cursor++
+            while (signature.getOrNull(cursor)?.isWhitespace() == true) cursor++
+            if (signature.getOrNull(cursor) == '(') {
+                var depth = 0
+                do {
+                    val token = signature[cursor]
+                    if (token == '\'' || token == '"') { cursor = quotedEnd(signature, cursor); continue }
+                    if (token == '(') depth++
+                    if (token == ')') depth--
+                    cursor++
+                } while (cursor < signature.length && depth > 0)
+            }
+        }
+        return signature.substring(cursor).replaceFirst(Regex("^(?:static\\s+)?(?:var|const)\\s+"), "")
+    }
 
     /**
      * 忽略字符串中的括号，截取真实参数范围。

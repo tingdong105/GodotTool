@@ -112,7 +112,7 @@ import kotlin.math.ceil
  * @param onPlugins 切换插件范围。
  * @param onLoadMore 自动追加下一批结果。
  * @param onWrapLines 切换文本自动换行。
- * @param onViewMode 切换方法或常量范围。
+ * @param onViewMode 切换方法或字段范围。
  * @param onPublish 重试保存公开报告。
  * @param onBack 返回或关闭搜索。
  */
@@ -234,7 +234,8 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                                     val line = if (row.change.kind == ChangeKind.UNKNOWN) SnapshotReasonText.line(context, row.path, row.change)
                                         else if (row.change.key.isEmpty()) stringResource(R.string.compare_note_line, row.path, stringResource(changeLabel(row.change.kind, state.viewMode)))
                                         else ComparisonText.line(row.path, row.change)
-                                    SelectableResultText(ComparisonReaderLayout.preview(line), state.query, scale, state.wrapLines, selections) { width ->
+                                    SelectableResultText(ComparisonReaderLayout.preview(line), state.query, scale, state.wrapLines, selections,
+                                        ComparisonText.fieldNameRange(row.path, row.change)) { width ->
                                         if (width > widestLine) widestLine = width
                                     }
                                 }
@@ -398,17 +399,18 @@ private fun Modifier.dismissTextSelection(selections: ResultSelections): Modifie
  * @param scale 字号倍率。
  * @param wrapLines 是否允许换行。
  * @param selections 页面选择状态集合。
+ * @param fieldName 字段名的加粗范围。
  * @param onWidth 更新列表中的最长行宽。
  */
 @Composable
-private fun SelectableResultText(value: String, query: String, scale: Float, wrapLines: Boolean, selections: ResultSelections, onWidth: (Int) -> Unit) {
+private fun SelectableResultText(value: String, query: String, scale: Float, wrapLines: Boolean, selections: ResultSelections, fieldName: IntRange?, onWidth: (Int) -> Unit) {
     val selection = rememberSelectionState()
     DisposableEffect(selection, selections) {
         selections.entries[selection] = null
         onDispose { selections.entries.remove(selection) }
     }
     SelectionContainer(state = selection, modifier = Modifier.fillMaxWidth().onGloballyPositioned { selections.entries[selection] = it }) {
-        ResultText(value, query, scale, wrapLines, onWidth)
+        ResultText(value, query, scale, wrapLines, fieldName, onWidth)
     }
 }
 
@@ -418,13 +420,17 @@ private fun SelectableResultText(value: String, query: String, scale: Float, wra
  * @param query 关键词。
  * @param scale 字号缩放。
  * @param wrapLines 是否自动换行。
+ * @param fieldName 字段名的加粗范围。
  * @param onWidth 报告不换行时的完整文本宽度。
  */
 @Composable
-private fun ResultText(value: String, query: String, scale: Float, wrapLines: Boolean, onWidth: (Int) -> Unit) {
+private fun ResultText(value: String, query: String, scale: Float, wrapLines: Boolean, fieldName: IntRange?, onWidth: (Int) -> Unit) {
     val highlight = MiuixTheme.colorScheme.primary.copy(alpha = 0.22f)
-    val text = remember(value, query, highlight) { buildAnnotatedString {
+    val text = remember(value, query, highlight, fieldName) { buildAnnotatedString {
         append(value)
+        if (fieldName != null && fieldName.first < value.length) {
+            addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), fieldName.first, minOf(fieldName.last + 1, value.length))
+        }
         if (query.isNotBlank()) {
             var from = 0
             while (from < value.length) {

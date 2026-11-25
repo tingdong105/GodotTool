@@ -314,13 +314,13 @@ class ComparisonHistory(private val root: File, private val publicRoot: File,
                 if (!record.before.complete || !record.after.complete || !record.before.catalogComplete || !record.after.catalogComplete ||
                     record.counts[ChangeKind.UNKNOWN.ordinal] > 0) output.appendLine("部分内容无法分析，无法确认的内容不计入新增或删除。")
                 for (mode in modes) {
-                    output.appendLine(); output.appendLine(if (mode == ComparisonMode.METHODS) "[方法模式]" else "[常量模式]")
+                    output.appendLine(); output.appendLine(if (mode == ComparisonMode.METHODS) "[方法模式]" else "[字段模式]")
                     if (mode == ComparisonMode.CONSTANTS && !record.membersAvailable) {
-                        output.appendLine("旧快照不含常量和变量明细，请重新生成两个版本的 diff.gt 后对比。")
+                        output.appendLine("旧快照不含字段明细，请重新生成两个版本的 diff.gt 后对比。")
                         continue
                     }
                     val labels = if (mode == ComparisonMode.METHODS) listOf("增加的方法", "修改的方法", "删除的方法")
-                        else listOf("增加的常量/变量", "修改的常量/变量", "删除的常量/变量", "其它声明修改", "无法确认")
+                        else listOf("增加的字段", "修改的字段", "删除的字段", "其它声明修改", "无法确认")
                     val original = if (mode == ComparisonMode.METHODS) record.counts else record.memberCounts
                     for (kind in mode.kinds) {
                         val count = visible.getValue(mode to kind)

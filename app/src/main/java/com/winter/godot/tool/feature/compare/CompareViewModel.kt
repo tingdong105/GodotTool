@@ -330,7 +330,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
 
     /**
      * 切换独立的结果范围，保留当前增删改分类与搜索。
-     * @param mode 方法或常量模式。
+     * @param mode 方法或字段模式。
      */
     fun viewMode(mode: ComparisonMode) {
         // TODO: 接入规则和关心数据后启用关心模式。
