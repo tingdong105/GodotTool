@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 # NDK 在初始化工具链时读取 C++ 运行库选项。
 set(ANDROID_STL c++_static CACHE STRING "NDK C++ runtime")
-project(cnm_capstone LANGUAGES C CXX)
+project(cnm LANGUAGES C CXX)
 
 # 默认使用项目内准备的源码，桌面验证可传入其他位置。
 if(NOT DEFINED CAPSTONE_SOURCE_DIR)
@@ -18,10 +18,10 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory("${CAPSTONE_SOURCE_DIR}" capstone EXCLUDE_FROM_ALL)
 
-add_library(cnm_capstone SHARED cnm_key_locator.cpp)
-target_compile_features(cnm_capstone PRIVATE cxx_std_17)
-target_link_libraries(cnm_capstone PRIVATE capstone_static)
-set_target_properties(cnm_capstone PROPERTIES CXX_VISIBILITY_PRESET hidden)
+add_library(cnm SHARED cnm_key_locator.cpp)
+target_compile_features(cnm PRIVATE cxx_std_17)
+target_link_libraries(cnm PRIVATE capstone_static)
+set_target_properties(cnm PROPERTIES CXX_VISIBILITY_PRESET hidden)
 if(ANDROID)
-    target_link_options(cnm_capstone PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--exclude-libs,ALL")
+    target_link_options(cnm PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--exclude-libs,ALL")
 endif()

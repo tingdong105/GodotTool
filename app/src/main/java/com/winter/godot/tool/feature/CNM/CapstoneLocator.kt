@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
  */
 internal object CapstoneLocator {
     val available: Boolean = try {
-        System.loadLibrary("cnm_capstone")
+        System.loadLibrary("cnm")
         true
     } catch (_: UnsatisfiedLinkError) {
         false

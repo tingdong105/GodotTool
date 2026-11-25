@@ -45,8 +45,8 @@ def inspect(apk: Path, build_tools: Path) -> None:
             assert f"assets/{name}" not in names, name
             assert archive.read(f"assets/txt/{name}"), name
         assert "Capstone" in archive.read("assets/txt/licenses.txt").decode("utf-8")
-        assert "lib/arm64-v8a/libcnm_capstone.so" in archive.namelist()
-        locator = archive.read("lib/arm64-v8a/libcnm_capstone.so")
+        assert "lib/arm64-v8a/libcnm.so" in archive.namelist()
+        locator = archive.read("lib/arm64-v8a/libcnm.so")
         assert b"Java_com_winter_godot_tool_feature_CNM_CapstoneLocator_nativeReferences" in locator
         dex = b"".join(archive.read(name) for name in archive.namelist() if name.endswith(".dex"))
         assert b"res://gdre/driver.gdc" in dex, "Missing compiled driver entry"
