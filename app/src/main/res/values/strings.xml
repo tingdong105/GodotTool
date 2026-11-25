@@ -102,6 +102,7 @@
     <string name="home">首页</string>
     <string name="history">处理记录</string>
     <string name="output_directory">输出目录</string>
+    <string name="output_directory_copied">复制成功</string>
     <string name="output_path">/storage/emulated/0/GodotTool/</string>
     <string name="shared_storage">内部存储</string>
     <string name="storage_permission">访问文件</string>
@@ -146,9 +147,6 @@
     <string name="about_version_unavailable">版本信息不可用</string>
     <string name="about_link_failed">无法打开链接，请安装浏览器后重试。</string>
     <string name="about_licenses_failed">许可读取失败，请重试。</string>
-    <string name="about_copy_licenses">复制全部</string>
-    <string name="about_licenses_copied">已复制全部开源许可</string>
-    <string name="about_copy_failed">复制失败，请重试。</string>
     <string name="about_developer">开发者</string>
     <string name="about_developer_name">听冬</string>
     <string name="about_developer_description">一个懒懒的不知名开发者.</string>

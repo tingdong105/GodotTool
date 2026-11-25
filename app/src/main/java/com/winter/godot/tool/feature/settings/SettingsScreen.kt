@@ -1,7 +1,9 @@
 package com.winter.godot.tool.feature.settings
 
+import android.content.ClipData
 import android.os.Build
 import android.view.MotionEvent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +24,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -65,6 +70,11 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
     onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}, onComparisonFocusRules: () -> Unit = {}) {
     var clearing by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val outputLabel = stringResource(R.string.output_directory)
+    val outputPath = stringResource(R.string.output_path)
     val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
     val bottomInset = LocalRootBottomInset.current
     LazyColumn(contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
@@ -101,7 +111,12 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
         item {
             SectionTitle(stringResource(R.string.storage))
             Card {
-                BasicComponent(title = stringResource(R.string.output_directory), summary = stringResource(R.string.output_path))
+                BasicComponent(title = outputLabel, summary = outputPath, onClick = {
+                    scope.launch {
+                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(outputLabel, outputPath)))
+                        Toast.makeText(context, R.string.output_directory_copied, Toast.LENGTH_SHORT).show()
+                    }
+                })
                 ArrowPreference(title = stringResource(R.string.clear_cache), enabled = !busy, onClick = { clearing = true })
             }
         }
