@@ -1,18 +1,8 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
 # Capstone JNI 通过固定类名与方法名调用。
 -keep class com.winter.godot.tool.feature.CNM.CapstoneLocator { *; }
 
 # Lottie 间接依赖的 Okio 仅用此注解标记可空类型。
 -dontwarn javax.annotation.Nullable
+
+# 混淆类统一归入 godot 包；
+-repackageclasses godot
