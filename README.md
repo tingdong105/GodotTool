@@ -7,9 +7,10 @@
 **恢复 Godot 项目，追踪版本变化**
 
 <p>
+<a href="https://github.com/tingdong105/GodotTool/releases/latest"><img src="https://img.shields.io/github/v/release/tingdong105/GodotTool?style=flat-square&amp;label=Release&amp;color=22C55E&amp;logo=github&amp;logoColor=white&amp;cacheSeconds=300" alt="最新 Release" /></a>
   <img src="https://img.shields.io/badge/Android-9.0%2B-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 9.0 及以上" />
   <img src="https://img.shields.io/badge/ABI-arm64--v8a-475569?style=flat-square" alt="arm64-v8a" />
-  <a href="https://github.com/tingdong105/GodotTool/releases/latest"><img src="https://img.shields.io/github/v/release/tingdong105/GodotTool?style=flat-square&amp;label=Release&amp;color=22C55E&amp;logo=github&amp;logoColor=white&amp;cacheSeconds=300" alt="最新 Release" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-blue?style=flat-square&amp;logo=gnu&amp;logoColor=white" alt="GPL-3.0-only" /></a>
 </p>
 
 <p>
@@ -155,6 +156,12 @@ Release APK 输出至 `app/build/outputs/apk/release/`。
 | [Coil](https://github.com/coil-kt/coil) | 关于页开发者头像加载。 |
 
 第三方组件遵循各自的许可证，构建准备脚本会收集相关许可文本；可在应用的「关于软件 → 开源许可」中离线阅读。
+
+## 📄 开源协议
+
+Copyright (C) 2026 Tingdong.
+
+除另有声明的第三方文件外，本项目采用 [GNU General Public License v3.0](LICENSE)（仅限第 3 版，SPDX：`GPL-3.0-only`）。第三方代码与组件的原始许可及版权声明继续有效。
 
 ---
 
