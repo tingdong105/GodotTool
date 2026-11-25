@@ -23,7 +23,6 @@ data class AboutUiState(
     val versionName: String? = null,
     val versionCode: Long = 0,
     val licenses: List<String>? = null,
-    val licenseText: String? = null,
     val licenseFailed: Boolean = false,
 )
 
@@ -68,9 +67,9 @@ class AboutViewModel(application: Application) : AndroidViewModel(application) {
                     val imageNotice = assets.open("txt/coil-notice.txt").bufferedReader().use { it.readText() }
                     val glassNotice = assets.open("txt/navigation-glass-notice.txt").bufferedReader().use { it.readText() }
                     val complete = notice + "\n\n" + imageNotice + "\n\n" + glassNotice + "\n\n" + text
-                    complete to splitLicenseText(complete)
+                    splitLicenseText(complete)
                 }
-                mutableUi.update { it.copy(licenseText = content.first, licenses = content.second) }
+                mutableUi.update { it.copy(licenses = content) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

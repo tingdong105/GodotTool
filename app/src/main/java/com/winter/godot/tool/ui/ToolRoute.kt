@@ -57,7 +57,6 @@ import com.winter.godot.tool.feature.settings.ComparisonRulesSortButton
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.settings.about.AboutScreen
 import com.winter.godot.tool.feature.settings.about.AboutViewModel
-import com.winter.godot.tool.feature.settings.about.LicensesCopyButton
 import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
@@ -250,7 +249,6 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     ComparisonRulesSortButton(ruleList.sort, ruleList.reversed, enabled,
                         { order, reversed -> comparison.sortRules(ruleGroup, order, reversed) })
                 }
-                if (screen == Screen.LICENSES) LicensesCopyButton(aboutUi.licenseText)
             }) { page(screen) }
         }
     }

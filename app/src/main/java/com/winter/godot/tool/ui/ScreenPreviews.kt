@@ -41,7 +41,6 @@ import com.winter.godot.tool.feature.settings.ComparisonRulesSortButton
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.settings.about.AboutScreen
 import com.winter.godot.tool.feature.settings.about.AboutUiState
-import com.winter.godot.tool.feature.settings.about.LicensesCopyButton
 import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
@@ -239,8 +238,8 @@ private fun AboutPreview() { GodotToolTheme {
 @Composable
 private fun LicensesPreview() { GodotToolTheme {
     val text = "miuix 0.9.4\nhttps://github.com/compose-miuix-ui/miuix\n\nApache License\nVersion 2.0, January 2004"
-    ToolScaffold(Screen.LICENSES, actions = { LicensesCopyButton(text) }) {
-        LicensesScreen(AboutUiState(licenses = listOf(text), licenseText = text), {})
+    ToolScaffold(Screen.LICENSES) {
+        LicensesScreen(AboutUiState(licenses = listOf(text)), {})
     }
 } }
 
