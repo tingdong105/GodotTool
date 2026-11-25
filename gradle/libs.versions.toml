@@ -7,6 +7,8 @@ kotlin = "2.4.21"
 composeBom = "2026.11.01"
 # https://github.com/compose-miuix-ui/miuix
 miuix = "0.9.4"
+# https://github.com/coil-kt/coil
+coil = "3.6.3"
 # https://github.com/airbnb/lottie-android
 lottie = "6.7.1"
 # https://github.com/Tencent/MMKV
@@ -46,6 +48,10 @@ miuix = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-android", version.re
 miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-android", version.ref = "miuix" }
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }
 miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
+miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }
+miuix-shader = { group = "top.yukonga.miuix.kmp", name = "miuix-shader-android", version.ref = "miuix" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 lottie-compose = { group = "com.airbnb.android", name = "lottie-compose", version.ref = "lottie" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }

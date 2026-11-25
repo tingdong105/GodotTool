@@ -95,11 +95,16 @@ tasks.configureEach {
 dependencies {
     // Godot 解包核心
     implementation(project(":gdre-core"))
-    // Miuix 组件库
+    // Miuix 组件全家桶
     implementation(libs.miuix)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.nav)
     implementation(libs.miuix.preference)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.shader)
+    // Coil 3 异步加载图片
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     // Lottie 动画
     implementation(libs.lottie.compose)
     // MMKV 持久化

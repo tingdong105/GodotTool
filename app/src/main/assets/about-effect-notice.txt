@@ -1,0 +1,16 @@
+About page OS3 background effect
+
+Copyright 2026, compose-miuix-ui contributors
+SPDX-License-Identifier: Apache-2.0
+
+Adapted by Tingdong for GodotTool, 2026.
+Source: InstallerX-Revived, commit caccb787c1a4189da3f917eb990fb949305e3899
+https://github.com/wxxsfxyzm/InstallerX-Revived/tree/caccb787c1a4189da3f917eb990fb949305e3899/app/src/main/java/com/rosan/installer/ui/library/effect
+
+Files adapted: BgEffectBackground.kt, BgEffectConfig.kt, BgEffectModifier.kt,
+BgEffectPainter.kt, DeviceType.kt, OS3BgFrag.kt.
+Changes: OS3-only presets, GodotTool theme and viewport integration, pausable
+animation, miuix 0.9.4 shader API adaptation, transparent-area division guard.
+
+The Apache License, Version 2.0 text appears below in the miuix license entry.
+https://www.apache.org/licenses/LICENSE-2.0

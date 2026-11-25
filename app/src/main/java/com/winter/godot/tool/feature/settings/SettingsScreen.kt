@@ -2,14 +2,12 @@ package com.winter.godot.tool.feature.settings
 
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -21,7 +19,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -34,11 +31,8 @@ import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
-import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.theme.Theme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
@@ -46,14 +40,14 @@ import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 分组管理外观、恢复偏好、存储和许可。
+ * 分组管理外观、恢复偏好、存储和关于入口。
+ * @param onAbout 打开关于软件页面。
  * @param onChange 即时保存外观与解包选项。
  * @param onThemeChange 立即提交主题及点击位置的窗口坐标。
  * @param onThemePrepare 打开菜单前准备不含菜单的截图。
@@ -62,9 +56,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit,
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
-    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}) {
+    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}) {
     var clearing by remember { mutableStateOf(false) }
-    var licenses by remember { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(horizontal = Theme.spacing.md, vertical = Theme.spacing.sm)) {
         item {
             SectionTitle(stringResource(R.string.theme))
@@ -89,21 +82,12 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
         item {
             SectionTitle(stringResource(R.string.about))
             Card {
-                BasicComponent(title = stringResource(R.string.app_name), summary = stringResource(R.string.about_core))
-                ArrowPreference(title = stringResource(R.string.licenses), onClick = { licenses = true })
+                ArrowPreference(title = stringResource(R.string.about_software), onClick = onAbout)
             }
         }
     }
     if (clearing) ConfirmDialog(stringResource(R.string.clear_cache_title), stringResource(R.string.clear_cache_detail),
         { clearing = false }, { clearing = false; onClear() })
-    if (licenses) {
-        val context = LocalContext.current
-        val text by produceState("") { value = withContext(Dispatchers.IO) { context.assets.open("licenses.txt").bufferedReader().use { it.readText() } } }
-        ToolDialog(stringResource(R.string.licenses), { licenses = false }) {
-            Text(text, style = Theme.typography.detail)
-            TextButton(stringResource(R.string.close), { licenses = false }, Modifier.fillMaxWidth())
-        }
-    }
 }
 
 /**

@@ -13,7 +13,7 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
  * @author Tingdong
  * @date 2026-11-24
  */
-enum class Screen : NavKey { HOME, TASKS, COMPARE, COMPARE_RESULT, SETTINGS, FILES, WORKSPACE }
+enum class Screen : NavKey { HOME, TASKS, COMPARE, COMPARE_RESULT, SETTINGS, FILES, WORKSPACE, ABOUT, LICENSES }
 
 /**
  * 判断是否为一级导航页面。
@@ -97,6 +97,8 @@ class ToolNavigation(private val saved: SavedStateHandle) {
             Screen.COMPARE.name -> listOf(Screen.COMPARE)
             Screen.COMPARE_RESULT.name -> listOf(Screen.COMPARE, Screen.COMPARE_RESULT)
             Screen.SETTINGS.name, "DEFAULTS" -> listOf(Screen.SETTINGS)
+            Screen.ABOUT.name -> listOf(Screen.SETTINGS, Screen.ABOUT)
+            Screen.LICENSES.name -> listOf(Screen.SETTINGS, Screen.ABOUT, Screen.LICENSES)
             Screen.FILES.name, "RECOVERY" -> listOf(Screen.HOME, Screen.FILES)
             Screen.TASKS.name -> listOf(Screen.HOME, Screen.TASKS)
             Screen.WORKSPACE.name -> if (saved.get<String>("workspaceOrigin") == Screen.TASKS.name)

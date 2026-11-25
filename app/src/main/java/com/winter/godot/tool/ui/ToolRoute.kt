@@ -46,6 +46,10 @@ import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.settings.SettingsScreen
+import com.winter.godot.tool.feature.settings.about.AboutScreen
+import com.winter.godot.tool.feature.settings.about.AboutViewModel
+import com.winter.godot.tool.feature.settings.about.LicensesCopyButton
+import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
@@ -89,16 +93,27 @@ private val toolPageTransition = object : NavTransition by NavTransitions.MiuixD
  * @param model 界面状态模型。
  */
 @Composable
-fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel = viewModel()) {
+fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel = viewModel(), about: AboutViewModel = viewModel()) {
     val ui by model.ui.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val tasks by model.tasks.collectAsStateWithLifecycle()
     val active by model.active.collectAsStateWithLifecycle()
     val logs by model.logs.collectAsStateWithLifecycle()
     val comparisonUi by comparison.ui.collectAsStateWithLifecycle()
+    val aboutUi by about.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var permissionExplanation by remember { mutableStateOf(false) }
     var pendingComparisonExport by rememberSaveable { mutableStateOf(false) }
+    var aboutLinkFailed by rememberSaveable { mutableStateOf(false) }
+    val openAboutLink: (String) -> Unit = { url ->
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: android.content.ActivityNotFoundException) {
+            aboutLinkFailed = true
+        } catch (_: SecurityException) {
+            aboutLinkFailed = true
+        }
+    }
     val storageGranted: () -> Unit = {
         if (StorageAccess.granted(context)) {
             if (pendingComparisonExport) { pendingComparisonExport = false; comparison.publish() } else model.navigate(Screen.FILES)
@@ -161,7 +176,15 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
                         ui.selectedTasks, ui.deletingTasks, model::selectTask)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
-                        onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme)
+                        onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
+                        onAbout = { model.navigate(Screen.ABOUT) })
+                    Screen.ABOUT -> AboutScreen(aboutUi, screen == ui.screen, back, {
+                        openAboutLink(AboutViewModel.SOURCE_URL)
+                    }, { model.navigate(Screen.LICENSES) }, onDeveloper = { openAboutLink(AboutViewModel.DEVELOPER_URL) })
+                    Screen.LICENSES -> {
+                        LaunchedEffect(Unit) { about.loadLicenses() }
+                        LicensesScreen(aboutUi, about::loadLicenses)
+                    }
                     Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
                         { model.confirmFiles { old, path -> comparison.select(old, path) } }, model::refreshFiles)
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
@@ -179,9 +202,15 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     if (ui.noticeDetail.isNotEmpty()) Text(ui.noticeDetail, style = Theme.typography.code)
                     PrimaryButton(stringResource(R.string.confirm), model::dismissNotice, Modifier.fillMaxWidth())
                 } }
+                if (destination == Screen.ABOUT && destination == ui.screen && aboutLinkFailed) {
+                    ToolDialog(stringResource(R.string.notice), { aboutLinkFailed = false }) {
+                        Text(stringResource(R.string.about_link_failed))
+                        PrimaryButton(stringResource(R.string.confirm), { aboutLinkFailed = false }, Modifier.fillMaxWidth())
+                    }
+                }
             }
             if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, page)
-            else if (screen == Screen.COMPARE_RESULT) page(screen)
+            else if (screen == Screen.COMPARE_RESULT || screen == Screen.ABOUT) page(screen)
             else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() },
                 titleOverride = if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) stringResource(R.string.tasks_selected, ui.selectedTasks.size) else null, actions = {
                 if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) {
@@ -189,6 +218,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
                 }
                 if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
+                if (screen == Screen.LICENSES) LicensesCopyButton(aboutUi.licenseText)
             }) { page(screen) }
         }
     }
@@ -238,6 +268,8 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Screen.COMPARE -> stringResource(R.string.compare)
         Screen.COMPARE_RESULT -> stringResource(R.string.compare_result)
         Screen.SETTINGS -> stringResource(R.string.settings)
+        Screen.ABOUT -> stringResource(R.string.about_software)
+        Screen.LICENSES -> stringResource(R.string.licenses)
         Screen.TASKS -> stringResource(R.string.history)
         Screen.FILES -> stringResource(R.string.select_file)
         Screen.WORKSPACE -> workspaceName.ifEmpty { stringResource(R.string.workspace) }
