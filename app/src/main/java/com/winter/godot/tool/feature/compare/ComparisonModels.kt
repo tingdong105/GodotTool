@@ -54,7 +54,7 @@ data class MethodSnapshot(val key: String, val signature: String, val declaratio
 data class MemberSnapshot(val key: String, val signature: String, val fingerprint: String)
 
 /**
- * 独立的结果查看范围，关心模式预留。
+ * 结果内容类型与关心模式菜单指令。
  * @author Tingdong
  * @date 2026-11-25
  */

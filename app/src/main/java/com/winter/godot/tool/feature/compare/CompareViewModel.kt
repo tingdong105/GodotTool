@@ -46,7 +46,7 @@ data class CompareUiState(
     val filtering: Boolean = false, val counts: List<Int> = List(ChangeKind.entries.size) { 0 },
     val stars: Set<String> = emptySet(), val rules: List<ComparisonRule> = emptyList(), val rulesSaving: Boolean = false,
     val rulesLoading: Boolean = true, val rulesLoadFailed: Boolean = false, val rulesError: Int? = null, val rulesRevision: Int = 0,
-    val selectedRules: Set<String> = emptySet(), val ruleSort: RuleSort = RuleSort.TIME, val rulesReversed: Boolean = true,
+    val filterRuleList: ComparisonRuleListState = ComparisonRuleListState(), val focusRuleList: ComparisonRuleListState = ComparisonRuleListState(),
     val publishing: Boolean = false, val error: Int? = null,
     val matchedCounts: List<Int> = List(ChangeKind.entries.size) { 0 },
     val loadingMore: Boolean = false, val loadMoreFailed: Boolean = false, val wrapLines: Boolean = true,
@@ -54,6 +54,13 @@ data class CompareUiState(
 ) {
     val busy: Boolean get() = running || loadingBefore || loadingAfter
     val hasMore: Boolean get() = rows.size < totalRows
+
+    /**
+     * 获取指定分组的规则列表状态。
+     * @param group 过滤或关心分组。
+     * @return 该组的排序与勾选状态。
+     */
+    fun ruleList(group: RuleGroup): ComparisonRuleListState = if (group == RuleGroup.FILTER) filterRuleList else focusRuleList
 }
 
 /**
@@ -69,11 +76,9 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         { path, change -> SnapshotReasonText.line(application, path, change) })
     private val rulesFile = File(application.filesDir, "comparison-rules.json")
     private val readerPreferences = MMKV.mmkvWithID("comparison-reader-v1", MMKV.SINGLE_PROCESS_MODE)
-    private val initialRuleSort = RuleSort.entries.firstOrNull { it.name == readerPreferences.decodeString("rules-sort", RuleSort.TIME.name) } ?: RuleSort.TIME
     private val mutableUi = MutableStateFlow(CompareUiState(includePlugins = saved["comparisonPlugins"] ?: false,
-        wrapLines = readerPreferences.decodeBool("wrap-lines", true), ruleSort = initialRuleSort,
-        rulesReversed = readerPreferences.decodeBool("rules-reversed", initialRuleSort.defaultReversed),
-        selectedRules = saved.get<ArrayList<String>>("comparisonSelectedRules")?.toSet().orEmpty()))
+        wrapLines = readerPreferences.decodeBool("wrap-lines", true),
+        filterRuleList = restoreRuleList(RuleGroup.FILTER), focusRuleList = restoreRuleList(RuleGroup.FOCUS)))
     val ui = mutableUi.asStateFlow()
     private var beforeJob: Job? = null
     private var afterJob: Job? = null
@@ -333,12 +338,13 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
 
     /**
      * 切换独立的结果范围，保留当前增删改分类与搜索。
-     * @param mode 方法或字段模式。
+     * @param mode 方法、字段或仅看关心的菜单指令。
      */
     fun viewMode(mode: ComparisonMode) {
-        // TODO: 接入规则和关心数据后启用关心模式。
-        if (mode == ComparisonMode.FOCUS || mode == ui.value.viewMode) return
-        mutableUi.update { it.copy(viewMode = mode) }
+        val focusOnly = mode == ComparisonMode.FOCUS
+        val contentMode = if (focusOnly) ui.value.viewMode else mode
+        if (contentMode == ui.value.viewMode && focusOnly == ui.value.focusOnly) return
+        mutableUi.update { it.copy(viewMode = contentMode, focusOnly = focusOnly) }
         filterResults()
     }
 
@@ -379,7 +385,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     }
 
     /**
-     * 加载全局过滤规则，失败保留文件并允许重试。
+     * 加载全局对比规则，失败保留文件并允许重试。
      */
     fun loadRules() {
         if (ui.value.rulesSaving || rulesLoadJob?.isActive == true) return
@@ -387,9 +393,8 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         rulesLoadJob = viewModelScope.launch {
             try {
                 val rules = withContext(Dispatchers.IO) { ComparisonRules.load(rulesFile) }
-                val selected = ui.value.selectedRules.intersect(rules.filter { it.exclude }.map { it.id }.toSet())
-                saved["comparisonSelectedRules"] = ArrayList(selected)
-                mutableUi.update { it.copy(rules = rules, rulesLoading = false, selectedRules = selected) }
+                mutableUi.update { it.copy(rules = rules, rulesLoading = false) }
+                trimRuleSelections(rules)
                 filterResults()
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) {
@@ -400,14 +405,16 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     }
 
     /**
-     * 添加或替换一条过滤规则，成功后刷新已有结果。
+     * 添加或替换一条对比规则，成功后刷新已有结果。
+     * @param group 过滤或关心分组。
      * @param original 编辑前的规则，新增时为空。
      * @param rule 表单提交的规则。
      */
-    fun saveRule(original: ComparisonRule?, rule: ComparisonRule) {
+    fun saveRule(group: RuleGroup, original: ComparisonRule?, rule: ComparisonRule) {
         val state = ui.value
         if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
-        val normalized = try { ComparisonRules.validate(rule.copy(exclude = true, id = original?.id ?: UUID.randomUUID().toString(),
+        if (original != null && original.exclude != group.exclude) return
+        val normalized = try { ComparisonRules.validate(rule.copy(exclude = group.exclude, id = original?.id ?: UUID.randomUUID().toString(),
             createdAt = original?.createdAt ?: System.currentTimeMillis())) }
         catch (_: Exception) { mutableUi.update { it.copy(rulesError = R.string.compare_rule_invalid) }; return }
         val position = original?.let { state.rules.indexOf(it) }
@@ -419,61 +426,100 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     }
 
     /**
-     * 删除确认时固定的一组过滤规则。
+     * 删除确认时固定的一组对比规则。
+     * @param group 过滤或关心分组。
      * @param ids 已确认删除的规则身份集合。
      */
-    fun deleteRules(ids: Set<String>) {
+    fun deleteRules(group: RuleGroup, ids: Set<String>) {
         val state = ui.value
         if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || ids.isEmpty()) return
-        val next = state.rules.filterNot { it.exclude && it.id in ids }
+        val next = state.rules.filterNot { it.exclude == group.exclude && it.id in ids }
         if (next.size != state.rules.size) persistRules(next)
     }
 
     /**
      * 切换一条规则的勾选状态。
+     * @param group 过滤或关心分组。
      * @param id 规则的稳定身份。
      */
-    fun selectRule(id: String) {
+    fun selectRule(group: RuleGroup, id: String) {
         val state = ui.value
-        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || state.rules.none { it.exclude && it.id == id }) return
-        setRuleSelection(if (id in state.selectedRules) state.selectedRules - id else state.selectedRules + id)
+        if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || state.rules.none { it.exclude == group.exclude && it.id == id }) return
+        val selected = state.ruleList(group).selectedIds
+        setRuleSelection(group, if (id in selected) selected - id else selected + id)
     }
 
     /**
-     * 全选过滤规则或取消当前全选。
+     * 全选指定组规则或取消当前全选。
+     * @param group 过滤或关心分组。
      */
-    fun selectAllRules() {
+    fun selectAllRules(group: RuleGroup) {
         val state = ui.value
         if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
-        val ids = state.rules.filter { it.exclude }.map { it.id }.toSet()
-        setRuleSelection(if (ids == state.selectedRules) emptySet() else ids)
+        val ids = state.rules.filter { it.exclude == group.exclude }.map { it.id }.toSet()
+        setRuleSelection(group, if (ids == state.ruleList(group).selectedIds) emptySet() else ids)
     }
 
     /**
      * 返回键退出多选，保存期间保留选择。
+     * @param group 过滤或关心分组。
      */
-    fun clearRuleSelection() {
-        if (!ui.value.rulesSaving) setRuleSelection(emptySet())
+    fun clearRuleSelection(group: RuleGroup) {
+        if (!ui.value.rulesSaving) setRuleSelection(group, emptySet())
     }
 
     /**
      * 保存规则列表的排序偏好，不改变规则及勾选。
+     * @param group 过滤或关心分组。
      * @param order 时间或名称排序。
      * @param reversed 用户选择的逆向开关。
      */
-    fun sortRules(order: RuleSort, reversed: Boolean) {
-        readerPreferences.encode("rules-sort", order.name)
-        readerPreferences.encode("rules-reversed", reversed)
-        mutableUi.update { it.copy(ruleSort = order, rulesReversed = reversed) }
+    fun sortRules(group: RuleGroup, order: RuleSort, reversed: Boolean) {
+        val prefix = if (group == RuleGroup.FILTER) "rules" else "focus-rules"
+        readerPreferences.encode("$prefix-sort", order.name)
+        readerPreferences.encode("$prefix-reversed", reversed)
+        mutableUi.update {
+            val list = it.ruleList(group).copy(sort = order, reversed = reversed)
+            if (group == RuleGroup.FILTER) it.copy(filterRuleList = list) else it.copy(focusRuleList = list)
+        }
     }
 
     /**
-     * 同步多选状态及页面恢复数据。
+     * 恢复单组规则的排序偏好与勾选。
+     * @param group 过滤或关心分组。
+     * @return 已恢复的规则列表状态。
+     */
+    private fun restoreRuleList(group: RuleGroup): ComparisonRuleListState {
+        val prefix = if (group == RuleGroup.FILTER) "rules" else "focus-rules"
+        val selectionKey = if (group == RuleGroup.FILTER) "comparisonSelectedRules" else "comparisonSelectedFocusRules"
+        val order = RuleSort.entries.firstOrNull { it.name == readerPreferences.decodeString("$prefix-sort", RuleSort.TIME.name) } ?: RuleSort.TIME
+        return ComparisonRuleListState(saved.get<ArrayList<String>>(selectionKey)?.toSet().orEmpty(), order,
+            readerPreferences.decodeBool("$prefix-reversed", order.defaultReversed))
+    }
+
+    /**
+     * 同步单组多选状态及页面恢复数据。
+     * @param group 过滤或关心分组。
      * @param ids 当前勾选的规则集合。
      */
-    private fun setRuleSelection(ids: Set<String>) {
-        saved["comparisonSelectedRules"] = ArrayList(ids)
-        mutableUi.update { it.copy(selectedRules = ids) }
+    private fun setRuleSelection(group: RuleGroup, ids: Set<String>) {
+        val selectionKey = if (group == RuleGroup.FILTER) "comparisonSelectedRules" else "comparisonSelectedFocusRules"
+        saved[selectionKey] = ArrayList(ids)
+        mutableUi.update {
+            val list = it.ruleList(group).copy(selectedIds = ids)
+            if (group == RuleGroup.FILTER) it.copy(filterRuleList = list) else it.copy(focusRuleList = list)
+        }
+    }
+
+    /**
+     * 清理两个分组中已不存在的勾选。
+     * @param rules 已提交的完整规则。
+     */
+    private fun trimRuleSelections(rules: List<ComparisonRule>) {
+        for (group in RuleGroup.entries) {
+            val ids = rules.filter { it.exclude == group.exclude }.map { it.id }.toSet()
+            setRuleSelection(group, ui.value.ruleList(group).selectedIds.intersect(ids))
+        }
     }
 
     /**
@@ -489,9 +535,8 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         ruleJob = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { ComparisonRules.save(rulesFile, next) }
-                val selected = ui.value.selectedRules.intersect(next.filter { it.exclude }.map { it.id }.toSet())
-                saved["comparisonSelectedRules"] = ArrayList(selected)
-                mutableUi.update { it.copy(rules = next, rulesSaving = false, rulesError = null, rulesRevision = it.rulesRevision + 1, selectedRules = selected) }
+                mutableUi.update { it.copy(rules = next, rulesSaving = false, rulesError = null, rulesRevision = it.rulesRevision + 1) }
+                trimRuleSelections(next)
                 filterResults()
             } catch (error: CancellationException) { throw error }
             catch (_: Exception) { mutableUi.update { it.copy(rulesSaving = false, rulesError = R.string.compare_rules_save_failed) } }
@@ -515,8 +560,8 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
             try {
                 val filtered = withContext(Dispatchers.IO) {
                     val context = coroutineContext
-                    val rules = ComparisonRules(state.rules.filter { it.exclude })
-                    val index = ComparisonResults.index(result, state.query, state.filter, state.includePlugins, state.viewMode, rules) { context.ensureActive() }
+                    val rules = ComparisonRules(state.rules)
+                    val index = ComparisonResults.index(result, state.query, state.filter, state.includePlugins, state.viewMode, rules, state.focusOnly) { context.ensureActive() }
                     index to ComparisonResults.read(index, 0) { context.ensureActive() }
                 }
                 resultIndex = filtered.first

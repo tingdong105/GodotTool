@@ -303,6 +303,7 @@ class ComparisonHistory(private val root: File, private val publicRoot: File,
                     val key = change.mode to change.kind
                     visible[key] = visible.getValue(key) + 1
                     val writer = writers.getValue(key)
+                    if (rules.focuses(entry.path, change)) writer.append("⭐ ")
                     writer.appendLine(if (change.kind == ChangeKind.UNKNOWN) unknownLine(entry.path, change) else ComparisonText.line(entry.path, change))
                 }
             }

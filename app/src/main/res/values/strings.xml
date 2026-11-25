@@ -300,7 +300,7 @@
     <string name="compare_reset_zoom">重置字号</string>
     <string name="compare_star">关注</string>
     <string name="compare_starred">取消关注</string>
-    <string name="compare_no_focused">暂无关注的方法</string>
+    <string name="compare_no_focused">暂无关心的方法</string>
     <string name="compare_rule_expression">规则内容</string>
     <string name="compare_rule_type">规则作用</string>
     <string name="compare_exclude">排除</string>
@@ -328,8 +328,8 @@
     <string name="compare_delete_rules_detail">删除选中的 %1$d 条规则？命中的对比结果将恢复显示。</string>
     <string name="compare_rules_sort_time">按时间排序</string>
     <string name="compare_rule_too_long">规则内容最多 256 个字符。</string>
-    <string name="compare_rules_load_failed">过滤规则读取失败，请重试。</string>
-    <string name="compare_rules_save_failed">过滤规则保存失败，请重试。</string>
+    <string name="compare_rules_load_failed">对比规则读取失败，请重试。</string>
+    <string name="compare_rules_save_failed">对比规则保存失败，请重试。</string>
     <string name="compare_rule_legacy">旧版匹配方式，可在列表中长按删除。</string>
     <string name="compare_report_title">GodotTool 对比结果</string>
     <string name="compare_version_change">版本：%1$s</string>
@@ -341,4 +341,9 @@
     <string name="compare_more">更多</string>
     <string name="compare_result_info">结果信息</string>
     <string name="compare_close_search">关闭搜索</string>
+    <string name="compare_focus_rules">关心规则</string>
+    <string name="compare_focus_rules_empty">暂无关心规则</string>
+    <string name="compare_delete_focus_rules_detail">删除选中的 %1$d 条规则？对应的关心标记将重新计算。</string>
+    <string name="compare_no_focused_fields">暂无关心的字段</string>
+    <string name="compare_focus_count_detail">%1$s：关心 %2$d（原始 %3$d）</string>
 </resources>

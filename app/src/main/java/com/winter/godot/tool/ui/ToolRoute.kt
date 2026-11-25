@@ -47,6 +47,7 @@ import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareViewModel
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
+import com.winter.godot.tool.feature.compare.RuleGroup
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.StorageAccess
@@ -145,21 +146,24 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
         } else legacyPermission.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
     }
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val activeRuleGroup = ui.screen.comparisonRuleGroup()
     val back: () -> Unit = {
         when {
             ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded -> comparison.expandSearch(false)
             ui.screen == Screen.COMPARE_RESULT -> { comparison.closeResult(); model.back() }
             ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty() -> comparison.clearSelection()
-            ui.screen == Screen.COMPARISON_RULES && comparisonUi.selectedRules.isNotEmpty() -> comparison.clearRuleSelection()
+            activeRuleGroup != null && comparisonUi.ruleList(activeRuleGroup).selectedIds.isNotEmpty() -> comparison.clearRuleSelection(activeRuleGroup)
             else -> model.back()
         }
     }
     LaunchedEffect(comparisonUi.viewingId) { if (comparisonUi.viewingId != null) model.navigate(Screen.COMPARE_RESULT) }
     BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty() ||
-        ui.screen == Screen.COMPARISON_RULES && comparisonUi.selectedRules.isNotEmpty() ||
+        activeRuleGroup != null && comparisonUi.ruleList(activeRuleGroup).selectedIds.isNotEmpty() ||
         ui.screen == Screen.TASKS && ui.selectedTasks.isNotEmpty(), onBack = back)
     ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
         ToolNavHost(model.navEntries, ui, back) { screen, pageUi ->
+            val ruleGroup = screen.comparisonRuleGroup()
+            val ruleList = ruleGroup?.let(comparisonUi::ruleList)
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
             val page: @Composable (Screen) -> Unit = { destination ->
                 when (destination) {
@@ -187,8 +191,13 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         ui.selectedTasks, ui.deletingTasks, model::selectTask)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
                         onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
-                        onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) })
-                    Screen.COMPARISON_RULES -> ComparisonRulesScreen(comparisonUi, comparison::saveRule, comparison::deleteRules, comparison::loadRules, comparison::selectRule)
+                        onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) },
+                        onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) })
+                    Screen.COMPARISON_RULES, Screen.COMPARISON_FOCUS_RULES -> {
+                        val group = requireNotNull(destination.comparisonRuleGroup())
+                        ComparisonRulesScreen(comparisonUi, { original, rule -> comparison.saveRule(group, original, rule) },
+                            { comparison.deleteRules(group, it) }, comparison::loadRules, { comparison.selectRule(group, it) }, group)
+                    }
                     Screen.ABOUT -> AboutScreen(aboutUi, screen == ui.screen, back, {
                         openAboutLink(AboutViewModel.SOURCE_URL)
                     }, { model.navigate(Screen.LICENSES) }, onDeveloper = { openAboutLink(AboutViewModel.DEVELOPER_URL) })
@@ -225,7 +234,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
             else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() },
                 titleOverride = when {
                     screen == Screen.TASKS && ui.selectedTasks.isNotEmpty() -> stringResource(R.string.tasks_selected, ui.selectedTasks.size)
-                    screen == Screen.COMPARISON_RULES && comparisonUi.selectedRules.isNotEmpty() -> stringResource(R.string.tasks_selected, comparisonUi.selectedRules.size)
+                    ruleList != null && ruleList.selectedIds.isNotEmpty() -> stringResource(R.string.tasks_selected, ruleList.selectedIds.size)
                     else -> null
                 }, actions = {
                 if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) {
@@ -233,11 +242,13 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
                 }
                 if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
-                if (screen == Screen.COMPARISON_RULES) {
+                if (ruleGroup != null && ruleList != null) {
                     val enabled = !comparisonUi.rulesLoading && !comparisonUi.rulesLoadFailed && !comparisonUi.rulesSaving
-                    if (comparisonUi.selectedRules.isNotEmpty()) TasksSelectAllButton(
-                        comparisonUi.selectedRules.size == comparisonUi.rules.count { it.exclude }, enabled, comparison::selectAllRules)
-                    ComparisonRulesSortButton(comparisonUi.ruleSort, comparisonUi.rulesReversed, enabled, comparison::sortRules)
+                    if (ruleList.selectedIds.isNotEmpty()) TasksSelectAllButton(
+                        ruleList.selectedIds.size == comparisonUi.rules.count { it.exclude == ruleGroup.exclude }, enabled,
+                        { comparison.selectAllRules(ruleGroup) })
+                    ComparisonRulesSortButton(ruleList.sort, ruleList.reversed, enabled,
+                        { order, reversed -> comparison.sortRules(ruleGroup, order, reversed) })
                 }
                 if (screen == Screen.LICENSES) LicensesCopyButton(aboutUi.licenseText)
             }) { page(screen) }
@@ -291,6 +302,7 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Screen.COMPARE_RESULT -> stringResource(R.string.compare_result)
         Screen.SETTINGS -> stringResource(R.string.settings)
         Screen.COMPARISON_RULES -> stringResource(R.string.compare_filter_rules)
+        Screen.COMPARISON_FOCUS_RULES -> stringResource(R.string.compare_focus_rules)
         Screen.ABOUT -> stringResource(R.string.about_software)
         Screen.LICENSES -> stringResource(R.string.licenses)
         Screen.TASKS -> stringResource(R.string.history)
@@ -346,4 +358,15 @@ fun ToolBottomNavigation(screen: Screen, onNavigate: (Screen) -> Unit) {
         NavigationBarItem(selected = screen == Screen.SETTINGS, onClick = { onNavigate(Screen.SETTINGS) },
             icon = toolIconVector(R.drawable.ic_settings), label = stringResource(R.string.settings))
     }
+}
+
+/**
+ * 获取规则设置页面所属的分组。
+ * 使用示例：Screen.COMPARISON_RULES.comparisonRuleGroup()。
+ * @return 规则分组，其它页面为空。
+ */
+private fun Screen.comparisonRuleGroup(): RuleGroup? = when (this) {
+    Screen.COMPARISON_RULES -> RuleGroup.FILTER
+    Screen.COMPARISON_FOCUS_RULES -> RuleGroup.FOCUS
+    else -> null
 }

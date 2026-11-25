@@ -17,7 +17,7 @@ data class ComparisonRow(val path: String, val change: MethodChange, val focused
  * @date 2026-11-25
  */
 class ComparisonIndex internal constructor(internal val result: ComparisonResult, internal val references: LongArray,
-    val counts: List<Int>, val matchedCounts: List<Int>) {
+    val counts: List<Int>, val matchedCounts: List<Int>, internal val rules: ComparisonRules) {
     val total: Int get() = references.size
 }
 
@@ -37,16 +37,17 @@ object ComparisonResults {
      * @param kind 变化类别，空值为全部。
      * @param plugins 是否包含插件。
      * @param mode 当前查看范围。
-     * @param rules 当前已编译的过滤规则。
+     * @param rules 当前已编译的过滤与关心规则。
+     * @param focusOnly 是否仅保留关心条目。
      * @param check 取消检查。
      * @return 可复用的方法位置索引及分类统计。
      */
     fun index(result: ComparisonResult, query: String, kind: ChangeKind?, plugins: Boolean, mode: ComparisonMode = ComparisonMode.METHODS,
-        rules: ComparisonRules = ComparisonRules(emptyList()), check: () -> Unit): ComparisonIndex {
+        rules: ComparisonRules = ComparisonRules(emptyList()), focusOnly: Boolean = false, check: () -> Unit): ComparisonIndex {
         val counts = MutableList(ChangeKind.entries.size) { 0 }
         val groups = List(ChangeKind.entries.size) { mutableListOf<Long>() }
         if (mode == ComparisonMode.FOCUS || mode == ComparisonMode.CONSTANTS && !result.membersAvailable)
-            return ComparisonIndex(result, LongArray(0), counts, counts)
+            return ComparisonIndex(result, LongArray(0), counts, counts, rules)
         RandomAccessFile(result.file, "r").use { file ->
             result.entries.forEachIndexed { entryIndex, entry ->
                 check()
@@ -54,6 +55,7 @@ object ComparisonResults {
                 SnapshotDiff.read(file, entry, result.dataVersion).changes.forEachIndexed methods@ { methodIndex, change ->
                     check()
                     if (!mode.includes(change) || rules.excludes(entry.path, change)) return@methods
+                    if (focusOnly && !rules.focuses(entry.path, change)) return@methods
                     counts[change.kind.ordinal]++
                     if (kind != null && change.kind != kind) return@methods
                     if (query.isNotBlank() && listOf(entry.path, change.key, change.before, change.after, ComparisonText.line(entry.path, change))
@@ -66,7 +68,7 @@ object ComparisonResults {
         val references = LongArray(matched.sum())
         var position = 0
         for (group in groups) for (reference in group) { check(); references[position++] = reference }
-        return ComparisonIndex(result, references, counts, matched)
+        return ComparisonIndex(result, references, counts, matched, rules)
     }
 
     /**
@@ -90,7 +92,8 @@ object ComparisonResults {
                 val entryIndex = (reference ushr 32).toInt()
                 val entry = index.result.entries[entryIndex]
                 if (loadedEntry != entryIndex) { changes = SnapshotDiff.read(file, entry, index.result.dataVersion).changes; loadedEntry = entryIndex }
-                rows += ComparisonRow(entry.path, changes[reference.toInt()], false)
+                val change = changes[reference.toInt()]
+                rows += ComparisonRow(entry.path, change, index.rules.focuses(entry.path, change))
             }
         }
         return rows

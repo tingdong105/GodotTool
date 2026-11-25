@@ -17,11 +17,14 @@ import com.winter.godot.tool.data.WorkspaceEntry
 import com.winter.godot.tool.feature.compare.ChangeKind
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareUiState
+import com.winter.godot.tool.feature.compare.ComparisonMode
 import com.winter.godot.tool.feature.compare.ComparisonRecord
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
 import com.winter.godot.tool.feature.compare.ComparisonRow
 import com.winter.godot.tool.feature.compare.ComparisonRule
+import com.winter.godot.tool.feature.compare.ComparisonRuleListState
 import com.winter.godot.tool.feature.compare.MethodChange
+import com.winter.godot.tool.feature.compare.RuleGroup
 import com.winter.godot.tool.feature.compare.RuleMatch
 import com.winter.godot.tool.feature.compare.RuleSort
 import com.winter.godot.tool.feature.compare.RuleTarget
@@ -92,7 +95,7 @@ private fun ComparisonResultPreview() { GodotToolTheme {
         header.copy(version = "1.1"), listOf(1, 1, 0, 0, 0), "261125_1")
     ComparisonResultScreen(CompareUiState(record = record, viewingId = record.id, historyLoading = false,
         counts = record.counts, matchedCounts = record.counts, rows = listOf(ComparisonRow("scripts/player.gd", MethodChange(ChangeKind.MODIFIED, "take_damage",
-            "func take_damage ( amount : int )", "func take_damage ( amount : int , source = null )", true, true), false))),
+            "func take_damage ( amount : int )", "func take_damage ( amount : int , source = null )", true, true), true))),
         {}, {}, {}, {}, {}, {}, {}, {}, {})
 } }
 
@@ -208,7 +211,7 @@ private fun ComparisonRulesSelectionPreview() { GodotToolTheme { ToolScaffold(Sc
         ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> }
     }) {
     ComparisonRulesScreen(CompareUiState(rulesLoading = false, rules = exampleComparisonRules,
-        selectedRules = setOf(exampleComparisonRules.first().id)), { _, _ -> }, {}, {}, {})
+        filterRuleList = ComparisonRuleListState(selectedIds = setOf(exampleComparisonRules.first().id))), { _, _ -> }, {}, {}, {})
 } } }
 
 /**
@@ -337,3 +340,68 @@ private fun HomeSelectedFilesPreview() { GodotToolTheme { ToolScaffold(Screen.HO
     HomeScreen(ToolUiState(inputFiles = setOf("/example/Project.apk")), ToolSettings(), null, false,
         {}, {}, {}, {}, {}, {}, {}, {})
 } } }
+
+/**
+ * 关心规则空列表的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonFocusRulesEmptyPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_FOCUS_RULES,
+    actions = { ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> } }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false), { _, _ -> }, {}, {}, {}, RuleGroup.FOCUS)
+} } }
+
+// 关心规则预览覆盖名称与路径匹配。
+private val exampleFocusRules = listOf(
+    exampleComparisonRules[0].copy(expression = "player", exclude = false, note = "关心玩家相关变化"),
+    exampleComparisonRules[1].copy(expression = "scripts/battle/", exclude = false),
+    exampleComparisonRules[2].copy(expression = "login", exclude = false))
+
+/**
+ * 关心规则列表的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonFocusRulesPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_FOCUS_RULES,
+    actions = { ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> } }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false, rules = exampleFocusRules), { _, _ -> }, {}, {}, {}, RuleGroup.FOCUS)
+} } }
+
+/**
+ * 关心规则多选的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonFocusRulesSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_FOCUS_RULES,
+    titleOverride = stringResource(R.string.tasks_selected, 1), actions = {
+        TasksSelectAllButton(false, true, {})
+        ComparisonRulesSortButton(RuleSort.TIME, true, true) { _, _ -> }
+    }) {
+    ComparisonRulesScreen(CompareUiState(rulesLoading = false, rules = exampleFocusRules,
+        focusRuleList = ComparisonRuleListState(selectedIds = setOf(exampleFocusRules.first().id))),
+        { _, _ -> }, {}, {}, {}, RuleGroup.FOCUS)
+} } }
+
+/**
+ * 关心规则编辑的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonFocusRuleEditorPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARISON_FOCUS_RULES) {
+    ComparisonRuleEditor(exampleFocusRules.first(), true, false, null, {}, {}, {}, RuleGroup.FOCUS)
+} } }
+
+/**
+ * 关心模式的字段标记预览。
+ */
+@ScreenPreviews
+@Composable
+private fun ComparisonFocusedResultPreview() { GodotToolTheme {
+    val header = SnapshotHeader(name = "Example", version = "1.0", catalogComplete = true, complete = true, membersIndexed = true)
+    val record = ComparisonRecord("11111111-1111-1111-1111-111111111111", 0, "Example 1.0", "Example 1.1", header,
+        header.copy(version = "1.1"), listOf(0, 1, 0, 0, 0), "261125_1", memberCounts = listOf(0, 1, 0, 0, 0))
+    ComparisonResultScreen(CompareUiState(record = record, viewingId = record.id, rulesLoading = false, focusOnly = true,
+        viewMode = ComparisonMode.CONSTANTS, counts = record.memberCounts, matchedCounts = record.memberCounts,
+        rows = listOf(ComparisonRow("scripts/player.gd", MethodChange(ChangeKind.MODIFIED, "health", "var health = 100", "var health = 200",
+            mode = ComparisonMode.CONSTANTS), true))), {}, {}, {}, {}, {}, {}, {}, {}, {})
+} }

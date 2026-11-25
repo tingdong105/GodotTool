@@ -32,7 +32,21 @@ enum class RuleTarget { ALL, METHOD, FIELD, PATH }
 enum class RuleSort(val defaultReversed: Boolean) { TIME(true), NAME(false) }
 
 /**
- * 路径与名称的过滤规则及保留的关注配置。
+ * 对比规则的管理分组。
+ * @author Tingdong
+ * @date 2026-11-25
+ */
+enum class RuleGroup(val exclude: Boolean) { FILTER(true), FOCUS(false) }
+
+/**
+ * 单组规则独立保存的排序与勾选状态。
+ * @author Tingdong
+ * @date 2026-11-25
+ */
+data class ComparisonRuleListState(val selectedIds: Set<String> = emptySet(), val sort: RuleSort = RuleSort.TIME, val reversed: Boolean = true)
+
+/**
+ * 路径与名称的过滤或关心规则。
  * @author Tingdong
  * @date 2026-11-25
  */

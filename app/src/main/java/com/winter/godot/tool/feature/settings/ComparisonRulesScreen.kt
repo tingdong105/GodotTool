@@ -54,6 +54,7 @@ import androidx.compose.ui.state.ToggleableState
 import com.winter.godot.tool.R
 import com.winter.godot.tool.feature.compare.CompareUiState
 import com.winter.godot.tool.feature.compare.ComparisonRule
+import com.winter.godot.tool.feature.compare.RuleGroup
 import com.winter.godot.tool.feature.compare.RuleMatch
 import com.winter.godot.tool.feature.compare.RuleTarget
 import com.winter.godot.tool.feature.compare.sortComparisonRules
@@ -87,29 +88,31 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private val editableMatches = listOf(RuleMatch.CONTAINS, RuleMatch.PREFIX, RuleMatch.EXACT)
 
 /**
- * 全局对比过滤规则的列表及添加入口。
+ * 全局对比规则的列表及添加入口。
  * @param state 共享的规则加载、保存状态。
  * @param onSave 新增或替换规则。
  * @param onDelete 删除确认后的规则。
  * @param onRetry 重试读取规则文件。
  * @param onSelect 切换规则勾选状态。
+ * @param group 当前管理的规则分组。
  */
 @Composable
 fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, ComparisonRule) -> Unit,
-    onDelete: (Set<String>) -> Unit, onRetry: () -> Unit, onSelect: (String) -> Unit) {
-    val rules = remember(state.rules, state.ruleSort, state.rulesReversed) {
-        sortComparisonRules(state.rules.filter { it.exclude }, state.ruleSort, state.rulesReversed)
+    onDelete: (Set<String>) -> Unit, onRetry: () -> Unit, onSelect: (String) -> Unit, group: RuleGroup = RuleGroup.FILTER) {
+    val ruleList = state.ruleList(group)
+    val rules = remember(state.rules, ruleList.sort, ruleList.reversed, group) {
+        sortComparisonRules(state.rules.filter { it.exclude == group.exclude }, ruleList.sort, ruleList.reversed)
     }
-    val selecting = state.selectedRules.isNotEmpty()
+    val selecting = ruleList.selectedIds.isNotEmpty()
     val list = rememberLazyListState()
     val editorStates = rememberSaveableStateHolder()
-    val editorStateKey = "comparison-rule-editor"
+    val editorStateKey = "comparison-rule-editor-${group.name}"
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var editorVisible by rememberSaveable { mutableStateOf(false) }
     var pendingDeletion by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var revision by rememberSaveable { mutableIntStateOf(state.rulesRevision) }
-    var previousSort by rememberSaveable { mutableStateOf(state.ruleSort) }
-    var previousReversed by rememberSaveable { mutableStateOf(state.rulesReversed) }
+    var previousSort by rememberSaveable { mutableStateOf(ruleList.sort) }
+    var previousReversed by rememberSaveable { mutableStateOf(ruleList.reversed) }
     val enabled = !state.rulesLoading && !state.rulesLoadFailed && !state.rulesSaving
     // 恢复时清理已关闭的编辑会话。
     LaunchedEffect(Unit) {
@@ -118,11 +121,11 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
             editorStates.removeState(editorStateKey)
         }
     }
-    LaunchedEffect(state.ruleSort, state.rulesReversed) {
-        if (previousSort != state.ruleSort || previousReversed != state.rulesReversed) {
+    LaunchedEffect(ruleList.sort, ruleList.reversed) {
+        if (previousSort != ruleList.sort || previousReversed != ruleList.reversed) {
             list.animateScrollToItem(0)
-            previousSort = state.ruleSort
-            previousReversed = state.rulesReversed
+            previousSort = ruleList.sort
+            previousReversed = ruleList.reversed
         }
     }
     LaunchedEffect(state.rulesRevision) {
@@ -149,10 +152,10 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
                     Text(stringResource(state.rulesError), color = MiuixTheme.colorScheme.error)
                 }
                 if (rules.isEmpty()) item {
-                    EmptyContent(stringResource(R.string.compare_rules_empty), icon = R.drawable.ic_compare)
+                    EmptyContent(stringResource(if (group == RuleGroup.FILTER) R.string.compare_rules_empty else R.string.compare_focus_rules_empty), icon = R.drawable.ic_compare)
                 }
                 items(rules, key = { it.id }) { rule ->
-                    ComparisonRuleRow(rule, rule.id in state.selectedRules, selecting, enabled,
+                    ComparisonRuleRow(rule, rule.id in ruleList.selectedIds, selecting, enabled,
                         { editingId = rule.id; editorVisible = true }, { onSelect(rule.id) },
                         Modifier.animateItem(placementSpec = spring(dampingRatio = 0.75f, stiffness = 300f)))
                 }
@@ -168,7 +171,7 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
             val foreground = if (deleting) MiuixTheme.colorScheme.onError else MiuixTheme.colorScheme.onPrimary
             FloatingActionButton(onClick = {
                 if (enabled && deleting == selecting) {
-                    if (deleting) pendingDeletion = ArrayList(state.selectedRules)
+                    if (deleting) pendingDeletion = ArrayList(ruleList.selectedIds)
                     else { editingId = ""; editorVisible = true }
                 }
             }, containerColor = if (deleting) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
@@ -176,21 +179,21 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
                 if (deleting && state.rulesSaving) CircularProgressIndicator(Modifier.size(Theme.sizes.icon),
                     colors = ProgressIndicatorDefaults.progressIndicatorColors(foregroundColor = foreground, backgroundColor = foreground.copy(alpha = 0.2f)))
                 else Icon(if (deleting) MiuixIcons.Delete else MiuixIcons.Add,
-                    if (deleting) stringResource(R.string.tasks_delete_selected, state.selectedRules.size) else stringResource(R.string.compare_add_rule),
+                    if (deleting) stringResource(R.string.tasks_delete_selected, ruleList.selectedIds.size) else stringResource(R.string.compare_add_rule),
                     Modifier.size(Theme.sizes.icon), tint = foreground)
             }
         }
     }
-    val original = state.rules.firstOrNull { it.id == editingId }
+    val original = rules.firstOrNull { it.id == editingId }
     if (editingId == "" || original != null) editorStates.SaveableStateProvider(editorStateKey) {
         key(editingId) {
             ComparisonRuleEditor(original, editorVisible, state.rulesSaving, state.rulesError, { if (!state.rulesSaving) editorVisible = false },
-                { editingId = null; editorStates.removeState(editorStateKey) }, { onSave(original, it) })
+                { editingId = null; editorStates.removeState(editorStateKey) }, { onSave(original, it) }, group)
         }
     }
     val confirmed = pendingDeletion.toSet().intersect(rules.map { it.id }.toSet())
     if (confirmed.isNotEmpty()) ToolDialog(stringResource(R.string.compare_delete_rule), { pendingDeletion = arrayListOf() }) {
-        Text(stringResource(R.string.compare_delete_rules_detail, confirmed.size), style = Theme.typography.body)
+        Text(stringResource(if (group == RuleGroup.FILTER) R.string.compare_delete_rules_detail else R.string.compare_delete_focus_rules_detail, confirmed.size), style = Theme.typography.body)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
             TextButton(stringResource(R.string.cancel), { pendingDeletion = arrayListOf() }, Modifier.weight(1f))
             PrimaryButton(stringResource(R.string.delete), {
@@ -246,10 +249,11 @@ private fun ComparisonRuleRow(rule: ComparisonRule, checked: Boolean, selecting:
  * @param onDismiss 关闭表单。
  * @param onDismissFinished 关闭动画结束后释放表单。
  * @param onSave 提交表单。
+ * @param group 当前管理的规则分组。
  */
 @Composable
 internal fun ComparisonRuleEditor(original: ComparisonRule?, show: Boolean, saving: Boolean, error: Int?, onDismiss: () -> Unit,
-    onDismissFinished: () -> Unit, onSave: (ComparisonRule) -> Unit) {
+    onDismissFinished: () -> Unit, onSave: (ComparisonRule) -> Unit, group: RuleGroup = RuleGroup.FILTER) {
     var expression by rememberSaveable { mutableStateOf(original?.expression.orEmpty()) }
     var match by rememberSaveable { mutableStateOf(original?.match ?: RuleMatch.CONTAINS) }
     var target by rememberSaveable { mutableStateOf(original?.target ?: RuleTarget.ALL) }
@@ -283,7 +287,7 @@ internal fun ComparisonRuleEditor(original: ComparisonRule?, show: Boolean, savi
                     if (show && !saving && !submitted && editable && expression.trim().length in 1..256) {
                         submitted = true
                         focus.clearFocus()
-                        onSave(ComparisonRule(expression, match, true, target, note))
+                        onSave(ComparisonRule(expression, match, group.exclude, target, note))
                     }
                 }, Modifier.weight(1f), enabled = editable && interactive && expression.trim().length in 1..256)
             }

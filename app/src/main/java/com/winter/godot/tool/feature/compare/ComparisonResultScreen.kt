@@ -112,7 +112,7 @@ import kotlin.math.ceil
  * @param onPlugins 切换插件范围。
  * @param onLoadMore 自动追加下一批结果。
  * @param onWrapLines 切换文本自动换行。
- * @param onViewMode 切换方法或字段范围。
+ * @param onViewMode 切换方法、字段或关心范围。
  * @param onPublish 重试保存公开报告。
  * @param onBack 返回或关闭搜索。
  */
@@ -128,7 +128,7 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
     val selections = remember(state.viewingId) { ResultSelections() }
     val title = state.record?.let(ComparisonText::title) ?: stringResource(R.string.compare_result)
     val contentWidth = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
-    LaunchedEffect(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision) {
+    LaunchedEffect(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.focusOnly, state.rulesRevision) {
         selections.clear()
         list.scrollToItem(0)
     }
@@ -190,10 +190,10 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                         thumbColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.45f),
                     )
                     val horizontal = rememberScrollState()
-                    var widestLine by remember(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision, scale) { mutableIntStateOf(0) }
+                    var widestLine by remember(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.focusOnly, state.rulesRevision, scale) { mutableIntStateOf(0) }
                     val readerWidth = with(density) { ComparisonReaderLayout.width(constraints.maxWidth, constraints.maxHeight, widestLine,
                         (Theme.spacing.lg * 2).roundToPx(), state.wrapLines).toDp() }
-                    LaunchedEffect(state.wrapLines, state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.rulesRevision) { horizontal.scrollTo(0) }
+                    LaunchedEffect(state.wrapLines, state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.focusOnly, state.rulesRevision) { horizontal.scrollTo(0) }
                     // 整个阅读区共用一个横向滚动容器，最长已显示行决定内容宽度。
                     if (state.opening || state.filtering) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -208,7 +208,8 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                                     if (unsupported) Text(stringResource(R.string.compare_members_unsupported), color = Theme.status.warning, style = Theme.typography.detail)
                                     else {
                                         val original = if (state.viewMode == ComparisonMode.CONSTANTS) record.memberCounts else record.counts
-                                        for (kind in listOf(ChangeKind.ADDED, ChangeKind.MODIFIED, ChangeKind.REMOVED)) Text(stringResource(R.string.compare_count_detail,
+                                        for (kind in listOf(ChangeKind.ADDED, ChangeKind.MODIFIED, ChangeKind.REMOVED)) Text(stringResource(
+                                            if (state.focusOnly) R.string.compare_focus_count_detail else R.string.compare_count_detail,
                                             stringResource(changeLabel(kind, state.viewMode)), state.counts[kind.ordinal], original[kind.ordinal], original[kind.ordinal] - state.counts[kind.ordinal]),
                                             style = Theme.typography.number)
                                     }
@@ -222,7 +223,9 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                             state.error?.let { error -> item(key = "error") { Text(stringResource(error), color = MiuixTheme.colorScheme.error) } }
                             if (state.rows.isEmpty() && !(state.viewMode == ComparisonMode.CONSTANTS && state.record?.membersAvailable == false)) item(key = "empty") {
                                 EmptyContent(stringResource(if (state.query.isNotBlank()) R.string.compare_no_matches
-                                    else if (state.viewMode == ComparisonMode.CONSTANTS) R.string.compare_no_member_changes else R.string.compare_no_changes), icon = R.drawable.ic_compare)
+                                    else if (state.focusOnly) {
+                                        if (state.viewMode == ComparisonMode.CONSTANTS) R.string.compare_no_focused_fields else R.string.compare_no_focused
+                                    } else if (state.viewMode == ComparisonMode.CONSTANTS) R.string.compare_no_member_changes else R.string.compare_no_changes), icon = R.drawable.ic_compare)
                             }
                             itemsIndexed(state.rows, key = { _, row -> row.id }) { index, row ->
                                 Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.xs)) {
@@ -235,7 +238,7 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                                         else if (row.change.key.isEmpty()) stringResource(R.string.compare_note_line, row.path, stringResource(changeLabel(row.change.kind, state.viewMode)))
                                         else ComparisonText.line(row.path, row.change)
                                     SelectableResultText(ComparisonReaderLayout.preview(line), state.query, scale, state.wrapLines, selections,
-                                        ComparisonText.fieldNameRange(row.path, row.change)) { width ->
+                                        ComparisonText.fieldNameRange(row.path, row.change), row.focused) { width ->
                                         if (width > widestLine) widestLine = width
                                     }
                                 }
@@ -293,12 +296,12 @@ private fun ResultMenu(state: CompareUiState, onPlugins: (Boolean) -> Unit, onWr
             Icon(MiuixIcons.More, stringResource(R.string.compare_more), Modifier.size(Theme.sizes.icon))
         }
         val modes = DropdownEntry(listOf(DropdownItem(stringResource(R.string.compare_view_mode), children = listOf(
-            DropdownItem(stringResource(R.string.compare_mode_methods), selected = state.viewMode == ComparisonMode.METHODS,
+            DropdownItem(stringResource(R.string.compare_mode_methods), selected = !state.focusOnly && state.viewMode == ComparisonMode.METHODS,
                 onClick = { onViewMode(ComparisonMode.METHODS); expanded = false }),
-            DropdownItem(stringResource(R.string.compare_mode_constants), selected = state.viewMode == ComparisonMode.CONSTANTS,
+            DropdownItem(stringResource(R.string.compare_mode_constants), selected = !state.focusOnly && state.viewMode == ComparisonMode.CONSTANTS,
                 onClick = { onViewMode(ComparisonMode.CONSTANTS); expanded = false }),
-            // TODO: 完成规则和关心功能后开放此入口。
-            DropdownItem(stringResource(R.string.compare_mode_focus), enabled = false),
+            DropdownItem(stringResource(R.string.compare_mode_focus), selected = state.focusOnly,
+                onClick = { onViewMode(ComparisonMode.FOCUS); expanded = false }),
         ))))
         val items = mutableListOf(
             DropdownItem(stringResource(R.string.compare_wrap_lines), selected = state.wrapLines, onClick = { onWrapLines(!state.wrapLines); expanded = false }),
@@ -400,17 +403,18 @@ private fun Modifier.dismissTextSelection(selections: ResultSelections): Modifie
  * @param wrapLines 是否允许换行。
  * @param selections 页面选择状态集合。
  * @param fieldName 字段名的加粗范围。
+ * @param focused 是否命中关心规则。
  * @param onWidth 更新列表中的最长行宽。
  */
 @Composable
-private fun SelectableResultText(value: String, query: String, scale: Float, wrapLines: Boolean, selections: ResultSelections, fieldName: IntRange?, onWidth: (Int) -> Unit) {
+private fun SelectableResultText(value: String, query: String, scale: Float, wrapLines: Boolean, selections: ResultSelections, fieldName: IntRange?, focused: Boolean, onWidth: (Int) -> Unit) {
     val selection = rememberSelectionState()
     DisposableEffect(selection, selections) {
         selections.entries[selection] = null
         onDispose { selections.entries.remove(selection) }
     }
     SelectionContainer(state = selection, modifier = Modifier.fillMaxWidth().onGloballyPositioned { selections.entries[selection] = it }) {
-        ResultText(value, query, scale, wrapLines, fieldName, onWidth)
+        ResultText(value, query, scale, wrapLines, fieldName, focused, onWidth)
     }
 }
 
@@ -421,13 +425,16 @@ private fun SelectableResultText(value: String, query: String, scale: Float, wra
  * @param scale 字号缩放。
  * @param wrapLines 是否自动换行。
  * @param fieldName 字段名的加粗范围。
+ * @param focused 是否命中关心规则。
  * @param onWidth 报告不换行时的完整文本宽度。
  */
 @Composable
-private fun ResultText(value: String, query: String, scale: Float, wrapLines: Boolean, fieldName: IntRange?, onWidth: (Int) -> Unit) {
+private fun ResultText(value: String, query: String, scale: Float, wrapLines: Boolean, fieldName: IntRange?, focused: Boolean, onWidth: (Int) -> Unit) {
     val highlight = MiuixTheme.colorScheme.primary.copy(alpha = 0.22f)
-    val text = remember(value, query, highlight, fieldName) { buildAnnotatedString {
+    val focusColor = MiuixTheme.colorScheme.primary
+    val text = remember(value, query, highlight, fieldName, focused, focusColor) { buildAnnotatedString {
         append(value)
+        if (focused) addStyle(SpanStyle(color = focusColor, fontWeight = FontWeight.SemiBold), 0, value.length)
         if (fieldName != null && fieldName.first < value.length) {
             addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), fieldName.first, minOf(fieldName.last + 1, value.length))
         }
