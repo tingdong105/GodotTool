@@ -56,8 +56,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -81,17 +83,22 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.HorizontalScrollBar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBarDefaults
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.overlay.OverlayCascadingListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.ceil
@@ -109,6 +116,7 @@ import kotlin.math.ceil
  * @param onPublish 重试保存公开报告。
  * @param onBack 返回或关闭搜索。
  */
+@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, onSearchExpanded: (Boolean) -> Unit,
     onFilter: (ChangeKind?) -> Unit, onPlugins: (Boolean) -> Unit, onLoadMore: () -> Unit, onWrapLines: (Boolean) -> Unit,
@@ -177,6 +185,10 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                     val density = LocalDensity.current
                     val viewportWidth = maxWidth
                     val textViewportWidth = (viewportWidth - Theme.spacing.lg * 2).coerceAtLeast(Theme.spacing.xs)
+                    val touchPadding = Theme.spacing.xs
+                    val scrollBarColors = ScrollBarDefaults.scrollBarColors(
+                        thumbColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                    )
                     val horizontal = rememberScrollState()
                     var widestLine by remember(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, scale) { mutableIntStateOf(0) }
                     val readerWidth = with(density) { ComparisonReaderLayout.width(constraints.maxWidth, constraints.maxHeight, widestLine,
@@ -234,6 +246,27 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                                 TextButton(stringResource(R.string.compare_load_more_failed), onLoadMore, Modifier.width(textViewportWidth))
                             }
                         }
+                    }
+                    if (!state.opening && !state.filtering) {
+                        // 扩大透明触控范围，绘制偏移保持滑块原位。
+                        if (list.canScrollForward || list.canScrollBackward) VerticalScrollBar(
+                            adapter = rememberScrollBarAdapter(list),
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().drawWithContent {
+                                translate(left = touchPadding.toPx()) { this@drawWithContent.drawContent() }
+                            },
+                            trackPadding = PaddingValues(vertical = Theme.spacing.md),
+                            colors = scrollBarColors,
+                            endPadding = ScrollBarDefaults.EndPadding + touchPadding,
+                        )
+                        if (!state.wrapLines && (horizontal.canScrollForward || horizontal.canScrollBackward)) HorizontalScrollBar(
+                            adapter = rememberScrollBarAdapter(horizontal),
+                            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().drawWithContent {
+                                translate(top = touchPadding.toPx()) { this@drawWithContent.drawContent() }
+                            },
+                            trackPadding = PaddingValues(horizontal = Theme.spacing.md),
+                            colors = scrollBarColors,
+                            endPadding = ScrollBarDefaults.EndPadding + touchPadding,
+                        )
                     }
                 }
             }
