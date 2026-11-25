@@ -28,6 +28,7 @@ import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
+import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
 import com.winter.godot.tool.ui.theme.GodotToolTheme
 
@@ -111,7 +112,25 @@ private fun RootTabsPreview() {
 @ScreenPreviews
 @Composable
 private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) { TasksScreen(listOf(exampleTask.copy(id = "22222222-2222-2222-2222-222222222222", status = TaskStatus.RUNNING,
-    stage = "extract", bytes = 25000000, totalBytes = 100000000, files = 620, totalFiles = 2893), exampleTask), "22222222-2222-2222-2222-222222222222", {}, {}, {}) } } }
+    stage = "extract", bytes = 25000000, totalBytes = 100000000, files = 620, totalFiles = 2893), exampleTask), "22222222-2222-2222-2222-222222222222", {}) } } }
+
+/**
+ * 处理记录多选与删除 FAB 的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun TasksSelectionPreview() { GodotToolTheme {
+    val records = (1..3).map { exampleTask.copy(id = "11111111-1111-1111-1111-11111111111$it", name = "NodeMotion 1.0.$it") }
+    var selected by remember { mutableStateOf(setOf(records.first().id)) }
+    ToolScaffold(Screen.TASKS, titleOverride = if (selected.isNotEmpty()) "已选 ${selected.size} 项" else null, actions = {
+        if (selected.isNotEmpty()) TasksSelectAllButton(selected.size == records.size, true) {
+            selected = if (selected.size == records.size) emptySet() else records.map { it.id }.toSet()
+        }
+    }) {
+        TasksScreen(records, null, {}, selected = selected,
+            onSelect = { id -> selected = if (id in selected) selected - id else selected + id })
+    }
+} }
 
 /**
  * 设置页的四种设备与主题预览。

@@ -64,6 +64,8 @@ data class ToolUiState(
     val previewLoading: Boolean = false,
     val truncated: Boolean = false,
     val binary: Boolean = false,
+    val selectedTasks: Set<String> = emptySet(),
+    val deletingTasks: Boolean = false,
     @param:StringRes val notice: Int? = null,
     val noticeDetail: String = "",
 )
@@ -102,6 +104,12 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     private var fileJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            tasks.collect { records ->
+                val selectable = records.filter { it.status != TaskStatus.RUNNING && it.id != active.value }.map { it.id }.toSet()
+                mutableUi.update { it.copy(selectedTasks = it.selectedTasks.intersect(selectable)) }
+            }
+        }
         saved["homeStep"] = ui.value.homeStep
         if (restoringTask) {
             saved["inputFiles"] = arrayListOf<String>()
@@ -130,6 +138,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         if (screen != Screen.FILES && ui.value.browserDirectoryOnly) resetDirectorySort()
         if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
         mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) { if (it.pickerPurpose == "recovery") it.inputFiles else emptySet() } else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
+            selectedTasks = if (screen == Screen.TASKS) it.selectedTasks else emptySet(),
             workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
             browserPath = if (screen == Screen.FILES) "" else it.browserPath,
             browserFiles = if (screen == Screen.FILES) emptyList() else it.browserFiles,
@@ -142,7 +151,9 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * 处理预览、工作区与顶层页面的返回。
      */
     fun back() {
-        if (ui.value.previewPath != null) {
+        if (ui.value.screen == Screen.TASKS && ui.value.selectedTasks.isNotEmpty()) {
+            clearTaskSelection()
+        } else if (ui.value.previewPath != null) {
             previewJob?.cancel()
             mutableUi.update { it.copy(previewPath = null, previewImage = null, previewText = "") }
         } else if (ui.value.screen == Screen.FILES && ui.value.browserPath.isNotEmpty() && ui.value.browserPath != StorageAccess.root().absolutePath) {
@@ -468,11 +479,50 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     }
 
     /**
-     * 清理一个已结束任务。
-     * @param id 用户确认的任务标识。
+     * 切换一个已结束任务的选择。
+     * @param id 任务标识。
      */
-    fun delete(id: String) {
-        viewModelScope.launch { runCatching { repository.delete(id) }.onFailure { showError(R.string.error_cleanup, it.message.orEmpty()) } }
+    fun selectTask(id: String) {
+        if (ui.value.deletingTasks || tasks.value.none { it.id == id && it.status != TaskStatus.RUNNING && it.id != active.value }) return
+        mutableUi.update { it.copy(selectedTasks = if (id in it.selectedTasks) it.selectedTasks - id else it.selectedTasks + id) }
+    }
+
+    /**
+     * 全选已结束任务，再次点击取消全选。
+     */
+    fun selectAllTasks() {
+        if (ui.value.deletingTasks) return
+        val ids = tasks.value.filter { it.status != TaskStatus.RUNNING && it.id != active.value }.map { it.id }.toSet()
+        mutableUi.update { it.copy(selectedTasks = if (it.selectedTasks == ids) emptySet() else ids) }
+    }
+
+    /**
+     * 退出记录多选模式。
+     */
+    fun clearTaskSelection() {
+        if (!ui.value.deletingTasks) mutableUi.update { it.copy(selectedTasks = emptySet()) }
+    }
+
+    /**
+     * 清理用户确认的已结束任务，失败时保留剩余选择。
+     * @param ids 已确认的任务标识集合。
+     */
+    fun deleteTasks(ids: Set<String>) {
+        if (ui.value.deletingTasks || ids.isEmpty()) return
+        val confirmed = ids.toSet()
+        mutableUi.update { it.copy(deletingTasks = true) }
+        viewModelScope.launch {
+            try {
+                repository.delete(confirmed)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                showError(R.string.error_cleanup, error.message.orEmpty())
+            } finally {
+                val remaining = tasks.value.map { it.id }.toSet()
+                mutableUi.update { it.copy(deletingTasks = false, selectedTasks = it.selectedTasks.intersect(remaining)) }
+            }
+        }
     }
 
     /**

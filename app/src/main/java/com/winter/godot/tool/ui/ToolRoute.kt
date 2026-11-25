@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
+import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareViewModel
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
@@ -46,6 +47,7 @@ import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.feature.home.HomeScreen
 import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
+import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.ToolDialog
@@ -129,7 +131,8 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
         }
     }
     LaunchedEffect(comparisonUi.viewingId) { if (comparisonUi.viewingId != null) model.navigate(Screen.COMPARE_RESULT) }
-    BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty(), onBack = back)
+    BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty() ||
+        ui.screen == Screen.TASKS && ui.selectedTasks.isNotEmpty(), onBack = back)
     ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
         ToolNavHost(model.navEntries, ui, back) { screen, pageUi ->
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
@@ -155,7 +158,8 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
                             if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
                         }, back)
-                    Screen.TASKS -> TasksScreen(tasks, active, model::openWorkspace, model::retry, model::delete)
+                    Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
+                        ui.selectedTasks, ui.deletingTasks, model::selectTask)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
                         onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme)
                     Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
@@ -178,7 +182,12 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
             }
             if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, page)
             else if (screen == Screen.COMPARE_RESULT) page(screen)
-            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() }, actions = {
+            else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() },
+                titleOverride = if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) stringResource(R.string.tasks_selected, ui.selectedTasks.size) else null, actions = {
+                if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) {
+                    val selectableCount = tasks.count { it.status != TaskStatus.RUNNING && it.id != active }
+                    TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
+                }
                 if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
             }) { page(screen) }
         }
@@ -218,12 +227,13 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
  * @param onBack 与系统返回共用导航栈。
  * @param showNavigation 一级分页内部由外层提供固定导航栏。
  * @param actions 二级页面顶栏操作。
+ * @param titleOverride 多选等临时状态的顶栏标题。
  */
 @Composable
 fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
-    actions: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
+    titleOverride: String? = null, actions: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
     val root = screen.isRoot()
-    val title = when (screen) {
+    val title = titleOverride ?: when (screen) {
         Screen.HOME -> stringResource(R.string.app_name)
         Screen.COMPARE -> stringResource(R.string.compare)
         Screen.COMPARE_RESULT -> stringResource(R.string.compare_result)

@@ -1,20 +1,27 @@
 package com.winter.godot.tool.data
 
 import android.content.Context
+import android.util.Log
 import com.tencent.mmkv.MMKV
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.task.EngineClient
 import com.winter.godot.tool.ui.components.errorResource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -38,9 +45,19 @@ class ToolRepository(private val context: Context) {
     private val mutableLogs = MutableStateFlow<List<TaskLogLine>>(emptyList())
     val logs: StateFlow<List<TaskLogLine>> = mutableLogs.asStateFlow()
     private var persistedAt = 0L
+    private val deletionMutex = Mutex()
+    private val deletionKey = "pending-task-delete-v1"
     private val client = EngineClient(context, ::onEvent, ::onDisconnected)
 
     init {
+        scope.launch {
+            deletionMutex.withLock {
+                val id = kv.decodeString(deletionKey) ?: return@withLock
+                try { deleteRecord(id) }
+                catch (error: CancellationException) { throw error }
+                catch (error: Exception) { Log.w("ToolRepository", "Pending workspace cleanup failed", error) }
+            }
+        }
         val running = mutableTasks.value.firstOrNull { it.status == TaskStatus.RUNNING }
         if (running != null) {
             mutableActive.value = running.id
@@ -112,11 +129,50 @@ class ToolRepository(private val context: Context) {
      * 清理明确指定且未运行的工作区。
      * @param id 任务标识。
      */
-    suspend fun delete(id: String) {
-        check(id != active.value)
-        withContext(Dispatchers.IO) { workspaces.delete(id) }
-        mutableTasks.update { records -> records.filterNot { it.id == id } }
-        persistTasks()
+    suspend fun delete(id: String) { delete(setOf(id)) }
+
+    /**
+     * 串行清理工作区，逐条保存记录与恢复标记。
+     * @param ids 用户确认的任务标识集合。
+     */
+    suspend fun delete(ids: Set<String>) = deletionMutex.withLock {
+        kv.decodeString(deletionKey)?.let { deleteRecord(it) }
+        val records = tasks.value.filter { it.id in ids }
+        check(records.none { it.id == active.value || it.status == TaskStatus.RUNNING })
+        for (record in records) {
+            currentCoroutineContext().ensureActive()
+            deleteRecord(record.id)
+        }
+    }
+
+    /**
+     * 先保存删除意图，提交索引后清除标记，中断时可重放。
+     * @param id 已确认清理的任务标识。
+     */
+    private suspend fun deleteRecord(id: String) {
+        require(id.matches(Regex("[0-9a-f-]{36}")))
+        check(id != active.value && tasks.value.none { it.id == id && it.status == TaskStatus.RUNNING })
+        withContext(NonCancellable) {
+            withContext(Dispatchers.IO) {
+                check(kv.encode(deletionKey, id)) { "DELETE_JOURNAL_WRITE_FAILED" }
+                kv.sync()
+            }
+            var removed = false
+            var committed = false
+            try {
+                withContext(Dispatchers.IO) { workspaces.delete(id) }
+                removed = true
+                mutableTasks.update { records -> records.filterNot { it.id == id } }
+                check(persistTasks()) { "TASK_INDEX_WRITE_FAILED" }
+                withContext(Dispatchers.IO) { kv.sync() }
+                committed = true
+            } finally {
+                if (!removed || committed) withContext(Dispatchers.IO) {
+                    kv.removeValueForKey(deletionKey)
+                    kv.sync()
+                }
+            }
+        }
     }
 
     /**
@@ -126,7 +182,7 @@ class ToolRepository(private val context: Context) {
     suspend fun clearFinished(): Int {
         check(active.value == null)
         val finished = tasks.value.filter { it.status != TaskStatus.RUNNING }
-        finished.forEach { delete(it.id) }
+        delete(finished.map { it.id }.toSet())
         return finished.size
     }
 
@@ -279,12 +335,14 @@ class ToolRepository(private val context: Context) {
 
     /**
      * 保存带版本号的轻量任务索引。
+     * @return 是否成功写入索引。
      */
-    private fun persistTasks() {
+    private fun persistTasks(): Boolean {
         val records = JSONArray()
         tasks.value.forEach { records.put(it.toJson()) }
-        kv.encode("tasks-v1", records.toString())
+        val persisted = kv.encode("tasks-v1", records.toString())
         persistedAt = System.currentTimeMillis()
+        return persisted
     }
 
     /**
