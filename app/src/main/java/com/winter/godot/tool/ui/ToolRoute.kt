@@ -10,13 +10,19 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -209,7 +215,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     }
                 }
             }
-            if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, page)
+            if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, settings.floatingBottomBar, settings.liquidGlass, page)
             else if (screen == Screen.COMPARE_RESULT || screen == Screen.ABOUT) page(screen)
             else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() },
                 titleOverride = if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) stringResource(R.string.tasks_selected, ui.selectedTasks.size) else null, actions = {
@@ -258,10 +264,11 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
  * @param showNavigation 一级分页内部由外层提供固定导航栏。
  * @param actions 二级页面顶栏操作。
  * @param titleOverride 多选等临时状态的顶栏标题。
+ * @param floatingNavigation 是否将底部避让交由一级列表处理。
  */
 @Composable
 fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
-    titleOverride: String? = null, actions: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
+    titleOverride: String? = null, actions: @Composable () -> Unit = {}, floatingNavigation: Boolean = false, content: @Composable () -> Unit) {
     val root = screen.isRoot()
     val title = titleOverride ?: when (screen) {
         Screen.HOME -> stringResource(R.string.app_name)
@@ -290,7 +297,12 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
                     IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
                 })
             }
-        }, bottomBar = {
+        }, contentWindowInsets = if (root && floatingNavigation)
+            WindowInsets.systemBars
+                .union(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            else WindowInsets.systemBars.union(WindowInsets.displayCutout),
+        bottomBar = {
             if (root && showNavigation) ToolBottomNavigation(screen, onNavigate)
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {

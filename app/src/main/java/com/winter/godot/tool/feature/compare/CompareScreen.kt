@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.state.ToggleableState
 import com.winter.godot.tool.R
+import com.winter.godot.tool.ui.LocalRootBottomInset
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.SectionTitle
@@ -76,11 +77,12 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
     onOpen: (String) -> Unit, onSelect: (String) -> Unit, onDelete: () -> Unit) {
     var deleting by remember { mutableStateOf(false) }
     val selecting = state.selected.isNotEmpty()
+    val navigationInset = LocalRootBottomInset.current
     val bottomPadding by animateDpAsState(if (selecting) FloatingActionButtonDefaults.MinHeight + Theme.spacing.xxl else Theme.spacing.md,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f), label = "historyBottomPadding")
     LaunchedEffect(selecting) { if (!selecting) deleting = false }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.md, bottom = bottomPadding),
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.md, bottom = bottomPadding + navigationInset),
             verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
             item(key = "inputs") {
                 Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
@@ -113,7 +115,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
                 HistoryRow(record, record.id in state.selected, state.selected.isNotEmpty(), { onOpen(record.id) }, { onSelect(record.id) })
             }
         }
-        AnimatedVisibility(selecting, modifier = Modifier.align(Alignment.BottomEnd).padding(Theme.spacing.lg),
+        AnimatedVisibility(selecting, modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = navigationInset).padding(Theme.spacing.lg),
             enter = slideInVertically(spring(dampingRatio = 0.65f, stiffness = 400f)) { it * 2 } + fadeIn(),
             exit = slideOutVertically(spring(dampingRatio = 0.8f, stiffness = 450f)) { it * 2 } + fadeOut()) {
             FloatingActionButton(onClick = { if (state.selected.isNotEmpty()) deleting = true }) {

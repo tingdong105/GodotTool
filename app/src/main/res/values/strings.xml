@@ -115,7 +115,7 @@
     <string name="preview_bytecode">这是字节码脚本，需要反编译为 .gd。当前显示十六进制内容，恢复失败原因见报告。</string>
     <string name="output_contents">文件内容</string>
     <string name="raw_files">原始资源</string>
-    <string name="recovery_content">解包选项</string>
+    <string name="recovery_content">解包</string>
     <string name="scripts_only_preset">仅脚本文件</string>
     <string name="full_project_preset">完整工程</string>
     <string name="project_scripts">脚本代码</string>
@@ -135,6 +135,8 @@
     <string name="recovery_mode">解包范围</string>
     <string name="custom_mode">自定义</string>
     <string name="appearance_mode">颜色模式</string>
+    <string name="floating_bottom_bar">悬浮底栏</string>
+    <string name="liquid_glass">液态玻璃</string>
     <string name="about">关于</string>
     <string name="about_software">关于软件</string>
     <string name="about_source">查看源代码</string>

@@ -46,6 +46,7 @@ import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.feature.compare.SnapshotStatus
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.recovery.recoveryMode
+import com.winter.godot.tool.ui.LocalRootBottomInset
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.TaskLogs
@@ -107,7 +108,8 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
     }
     val configurationMargin = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
         top = BasicComponentDefaults.InsideMargin.calculateTopPadding(), bottom = BasicComponentDefaults.InsideMargin.calculateBottomPadding())
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = Theme.spacing.md, vertical = Theme.spacing.sm),
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = Theme.spacing.sm + LocalRootBottomInset.current),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
         item(key = "file") {
             HomeStep(1, stringResource(R.string.select_file), fileSummary, expanded = step == 1,

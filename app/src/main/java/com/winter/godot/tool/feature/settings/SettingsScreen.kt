@@ -1,6 +1,9 @@
 package com.winter.godot.tool.feature.settings
 
+import android.os.Build
 import android.view.MotionEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +32,7 @@ import com.winter.godot.tool.data.ThemeMode
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
+import com.winter.godot.tool.ui.LocalRootBottomInset
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.theme.Theme
@@ -40,6 +44,7 @@ import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -58,11 +63,23 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
     onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}) {
     var clearing by remember { mutableStateOf(false) }
-    LazyColumn(contentPadding = PaddingValues(horizontal = Theme.spacing.md, vertical = Theme.spacing.sm)) {
+    val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
+    val bottomInset = LocalRootBottomInset.current
+    LazyColumn(contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+        top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset)) {
         item {
             SectionTitle(stringResource(R.string.theme))
             Card {
                 ThemeModePreference(settings.theme, onThemeChange, onThemePrepare, onThemeDismiss)
+                SwitchPreference(settings.floatingBottomBar, { onChange(settings.copy(floatingBottomBar = it)) },
+                    stringResource(R.string.floating_bottom_bar))
+                AnimatedVisibility(settings.floatingBottomBar) {
+                    Column {
+                        SwitchPreference(checked = settings.liquidGlass && glassSupported,
+                            onCheckedChange = { onChange(settings.copy(liquidGlass = it)) },
+                            title = stringResource(R.string.liquid_glass), enabled = glassSupported)
+                    }
+                }
             }
         }
         item {

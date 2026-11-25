@@ -66,7 +66,8 @@ class AboutViewModel(application: Application) : AndroidViewModel(application) {
                     val text = assets.open("licenses.txt").bufferedReader().use { it.readText() }
                     val notice = assets.open("about-effect-notice.txt").bufferedReader().use { it.readText() }
                     val imageNotice = assets.open("coil-notice.txt").bufferedReader().use { it.readText() }
-                    val complete = notice + "\n\n" + imageNotice + "\n\n" + text
+                    val glassNotice = assets.open("navigation-glass-notice.txt").bufferedReader().use { it.readText() }
+                    val complete = notice + "\n\n" + imageNotice + "\n\n" + glassNotice + "\n\n" + text
                     complete to splitLicenseText(complete)
                 }
                 mutableUi.update { it.copy(licenseText = content.first, licenses = content.second) }

@@ -99,13 +99,32 @@ private fun HomePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) { HomeScr
  */
 @ScreenPreviews
 @Composable
-private fun RootTabsPreview() {
+private fun RootTabsPreview() { RootTabsPreviewContent(false, false) }
+
+/** 实色悬浮底栏的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun FloatingTabsPreview() { RootTabsPreviewContent(true, false) }
+
+/** 液态玻璃底栏的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun GlassTabsPreview() { RootTabsPreviewContent(true, true) }
+
+/**
+ * 为三种导航模式提供统一预览内容。
+ * @param floating 是否使用悬浮底栏。
+ * @param glass 是否使用液态玻璃。
+ */
+@Composable
+private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean) {
     var screen by remember { mutableStateOf(Screen.HOME) }
+    val settings = ToolSettings(floatingBottomBar = floating, liquidGlass = glass)
     GodotToolTheme {
-        RootTabs(screen, true, { screen = it }) { page ->
+        RootTabs(screen, true, { screen = it }, floating, glass) { page ->
             if (page == Screen.HOME) HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {})
             else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
-            else SettingsScreen(ToolSettings(), false, {}, {})
+            else SettingsScreen(settings, false, {}, {})
         }
     }
 }
