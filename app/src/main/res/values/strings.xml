@@ -164,7 +164,10 @@
     <string name="start_processing">开始处理</string>
     <string name="default_configuration">默认配置</string>
     <string name="follow_configuration">跟随设置 · %1$s</string>
-    <string name="configuration_summary">%1$s · %2$s</string>
+    <string name="processing_contents">处理内容：%1$s</string>
+    <string name="unpack_full_files">解包完整文件</string>
+    <string name="unpack_script_files">解包脚本文件</string>
+    <string name="unpack_selected_files">解包%1$s</string>
     <string name="raw_enabled">保留原始资源</string>
     <string name="raw_disabled">仅保存解包结果</string>
     <string name="next_step">下一步</string>

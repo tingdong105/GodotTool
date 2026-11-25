@@ -157,11 +157,25 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
                     }
                 } else {
                     if (name != null) SelectedFile(name)
-                    Text(stringResource(R.string.configuration_summary, stringResource(recoveryMode(selection)),
-                        stringResource(if (selection.keepRaw) R.string.raw_enabled else R.string.raw_disabled)),
+                    val unpackContent = when (recoveryMode(selection)) {
+                        R.string.full_project_preset -> stringResource(R.string.unpack_full_files)
+                        R.string.scripts_only_preset -> stringResource(R.string.unpack_script_files)
+                        else -> if (selection.hasContent) stringResource(R.string.unpack_selected_files, listOfNotNull(
+                            if (selection.scripts) stringResource(R.string.project_scripts) else null,
+                            if (selection.scenes) stringResource(R.string.scene_resources) else null,
+                            if (selection.assets) stringResource(R.string.project_assets) else null,
+                            if (selection.config) stringResource(R.string.project_configuration) else null,
+                            if (selection.plugins) stringResource(R.string.project_plugins) else null,
+                        ).joinToString("、")) else null
+                    }
+                    val processingContent = listOfNotNull(
+                        unpackContent,
+                        if (selection.keepRaw) stringResource(R.string.keep_raw) else null,
+                        if (if (state.followsSettings) settings.snapshot.generate else state.generateSnapshot)
+                            stringResource(R.string.generate_snapshot) else null,
+                    )
+                    if (processingContent.isNotEmpty()) Text(stringResource(R.string.processing_contents, processingContent.joinToString(" + ")),
                         style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    if (if (state.followsSettings) settings.snapshot.generate else state.generateSnapshot)
-                        Text(stringResource(R.string.generate_snapshot), style = Theme.typography.detail, color = MiuixTheme.colorScheme.primary)
                     PrimaryButton(stringResource(R.string.start_processing), onStart, Modifier.fillMaxWidth(), enabled = !busy && name != null && selection.hasContent, icon = MiuixIcons.Play)
                 }
             }
