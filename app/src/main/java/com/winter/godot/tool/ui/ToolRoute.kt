@@ -51,8 +51,8 @@ import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.components.toolIconVector
-import com.winter.godot.tool.ui.theme.GodotToolTheme
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.theme.ThemeTransitionHost
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NavigationBar
@@ -130,7 +130,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
     }
     LaunchedEffect(comparisonUi.viewingId) { if (comparisonUi.viewingId != null) model.navigate(Screen.COMPARE_RESULT) }
     BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty(), onBack = back)
-    GodotToolTheme(settings.theme) {
+    ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
         ToolNavHost(model.navEntries, ui, back) { screen, pageUi ->
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
             val page: @Composable (Screen) -> Unit = { destination ->
@@ -156,7 +156,8 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                             if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
                         }, back)
                     Screen.TASKS -> TasksScreen(tasks, active, model::openWorkspace, model::retry, model::delete)
-                    Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished)
+                    Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
+                        onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme)
                     Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
                         { model.confirmFiles { old, path -> comparison.select(old, path) } }, model::refreshFiles)
                     Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
@@ -197,7 +198,7 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
     val currentContent by rememberUpdatedState(content)
     val corner = maxOf(rememberNavSystemCornerRadius(), Theme.sizes.corner)
     val effects = NavDisplayEffects(cornerClipRadius = corner, dimAmount = 0.12f,
-        backdropColor = MiuixTheme.colorScheme.background)
+        backdropColor = MiuixTheme.colorScheme.surface)
     NavDisplay(backStack = backStack, modifier = Modifier.fillMaxSize(), onBack = onBack,
         transition = toolPageTransition, effects = effects) {
         entry<Screen>(contentKey = { if (it.isRoot()) "root" else it.name }) { screen ->

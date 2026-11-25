@@ -17,6 +17,62 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
+// 石墨蓝灰底色，按页面、卡片和浮层递进提亮。
+private val toolDarkColors = darkColorScheme(
+    primary = Color(0xFF88B8F0),
+    onPrimary = Color(0xFF152A43),
+    primaryVariant = Color(0xFF355780),
+    onPrimaryVariant = Color(0xFFD8E8FF),
+    primaryContainer = Color(0xFF355780),
+    onPrimaryContainer = Color(0xFFD8E8FF),
+    disabledPrimary = Color(0xFF334359),
+    disabledOnPrimary = Color(0xFF738399),
+    disabledPrimaryButton = Color(0xFF334359),
+    disabledOnPrimaryButton = Color(0xFF8393A8),
+    disabledPrimarySlider = Color(0xFF465A73),
+    secondary = Color(0xFF4B5869),
+    onSecondary = Color(0xFFD1DBE8),
+    secondaryVariant = Color(0xFF2B3542),
+    onSecondaryVariant = Color(0xFFE0E8F2),
+    disabledSecondary = Color(0xFF2A323D),
+    disabledOnSecondary = Color(0xFF6E7A8C),
+    disabledSecondaryVariant = Color(0xFF2A323D),
+    disabledOnSecondaryVariant = Color(0xFF758296),
+    secondaryContainer = Color(0xFF27303B),
+    onSecondaryContainer = Color(0xFFAAB6C6),
+    secondaryContainerVariant = Color(0xFF2B3542),
+    onSecondaryContainerVariant = Color(0xFFB6C2D2),
+    tertiaryContainer = Color(0xFF2E425C),
+    onTertiaryContainer = Color(0xFFA8CCF7),
+    tertiaryContainerVariant = Color(0xFF2B3542),
+    surface = Color(0xFF161B21),
+    onSurface = Color(0xFFE7EDF5),
+    surfaceVariant = Color(0xFF1E252E),
+    onSurfaceSecondary = Color(0xFFCBD5E2),
+    onSurfaceVariantSummary = Color(0xFFAAB6C6),
+    onSurfaceVariantActions = Color(0xFF98A7BA),
+    disabledOnSurface = Color(0xFF758296),
+    surfaceContainer = Color(0xFF1E252E),
+    onSurfaceContainer = Color(0xFFE7EDF5),
+    onSurfaceContainerVariant = Color(0xFFAAB6C6),
+    surfaceContainerHigh = Color(0xFF27303B),
+    onSurfaceContainerHigh = Color(0xFFACBACC),
+    surfaceContainerHighest = Color(0xFF303A48),
+    onSurfaceContainerHighest = Color(0xFFE7EDF5),
+    background = Color(0xFF27303B),
+    onBackground = Color(0xFFE7EDF5),
+    onBackgroundVariant = Color(0xFFAAB6C6),
+    outline = Color(0xFF4C5A6C),
+    dividerLine = Color(0xFF3A4553),
+    error = Color(0xFFF0A5A5),
+    onError = Color(0xFF451E24),
+    errorContainer = Color(0xFF4A2D35),
+    onErrorContainer = Color(0xFFFFDADC),
+    sliderKeyPoint = Color(0x4DA8CCF7),
+    sliderKeyPointForeground = Color(0xFFA8CCF7),
+    sliderBackground = Color(0xFF303A48),
+)
+
 /**
  * 跨组件使用的语义间距。
  * @author Tingdong
@@ -63,14 +119,15 @@ object Theme {
 /**
  * miuix 主题与固定字体缩放。
  * @param mode 用户主题偏好。
+ * @param updateSystemBars 是否即时更新系统栏图标。
  * @param content 应用内容。
  */
 @Composable
-fun GodotToolTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+fun GodotToolTheme(mode: ThemeMode = ThemeMode.SYSTEM, updateSystemBars: Boolean = true, content: @Composable () -> Unit) {
     val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
-    val colors = if (dark) darkColorScheme() else lightColorScheme()
+    val colors = if (dark) toolDarkColors else lightColorScheme()
     val context = LocalContext.current
-    SideEffect {
+    if (updateSystemBars) SideEffect {
         (context as? Activity)?.window?.let { window -> WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = !dark
             isAppearanceLightNavigationBars = !dark
@@ -86,6 +143,6 @@ fun GodotToolTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -
  * @date 2026-11-24
  */
 class ToolStatusColors {
-    val success: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF76DBA0) else Color(0xFF238754)
-    val warning: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFEFBD68) else Color(0xFF946000)
+    val success: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF85C9A3) else Color(0xFF238754)
+    val warning: Color @Composable get() = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFE2BD7B) else Color(0xFF946000)
 }
