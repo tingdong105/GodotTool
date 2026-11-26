@@ -202,11 +202,13 @@
     <string name="compare_new">新版本</string>
     <string name="compare_choose">选择 diff.gt 或解包 ZIP</string>
     <string name="compare_start">开始对比</string>
-    <string name="compare_swap">交换版本</string>
     <string name="compare_processing">正在对比 · 已处理 %1$d 项</string>
     <string name="compare_importing">正在读取快照</string>
-    <string name="compare_empty">查看两个版本的方法变化</string>
-    <string name="compare_empty_detail">解包时开启「生成对比快照」，然后选择两个版本的 diff.gt 或 ZIP。完成后可随时回看记录。</string>
+    <string name="compare_progress_title">正在对比</string>
+    <string name="compare_progress_label">对比进度</string>
+    <string name="compare_import_progress_label">解析进度</string>
+    <string name="compare_saving">正在保存对比记录</string>
+    <string name="compare_empty">暂无记录</string>
     <string name="compare_complete">分析完整</string>
     <string name="compare_incomplete">部分内容无法分析</string>
     <string name="compare_partial">快照分析不完整，无法确认的内容不会计入新增或删除。</string>

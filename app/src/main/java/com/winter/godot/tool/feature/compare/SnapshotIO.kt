@@ -79,7 +79,7 @@ object SnapshotIO {
         require(file.isFile && file.canRead()) { "SNAPSHOT_UNAVAILABLE" }
         if (file.extension.equals("gt", true)) {
             require(file.length() in 1..SnapshotFormat.MAX_BYTES) { "SNAPSHOT_SIZE_LIMIT" }
-            return Cursor(file.inputStream(), null)
+            return Cursor(file.inputStream(), null, file.length())
         }
         require(file.extension.equals("zip", true)) { "SNAPSHOT_INPUT_TYPE" }
         val zip = ZipFile(file)
@@ -97,7 +97,7 @@ object SnapshotIO {
             }
             val entry = selected ?: error("SNAPSHOT_MISSING")
             require(entry.size in 1..SnapshotFormat.MAX_BYTES) { "SNAPSHOT_SIZE_LIMIT" }
-            return Cursor(zip.getInputStream(entry), zip)
+            return Cursor(zip.getInputStream(entry), zip, entry.size)
         } catch (error: Throwable) { zip.close(); throw error }
     }
 
@@ -106,8 +106,11 @@ object SnapshotIO {
      * @author Tingdong
      * @date 2026-11-25
      */
-    class Cursor(input: InputStream, private val archive: Closeable?) : Closeable {
-        private val reader = JsonReader.of(LimitedInput(input).source().buffer())
+    class Cursor(input: InputStream, private val archive: Closeable?, val totalBytes: Long) : Closeable {
+        private val limited = LimitedInput(input)
+        private val source = limited.source().buffer()
+        private val reader = JsonReader.of(source)
+        val bytesRead: Long get() = (limited.count - source.buffer.size).coerceIn(0L, totalBytes)
         val header: SnapshotHeader
         private var previous: String? = null
         private var count = 0
@@ -341,7 +344,8 @@ object SnapshotIO {
      * @date 2026-11-25
      */
     private class LimitedInput(input: InputStream) : FilterInputStream(input) {
-        private var count = 0L
+        var count = 0L
+            private set
         /**
          * 检查一个字节的实际读取量。
          * @return 字节值或结束标记。

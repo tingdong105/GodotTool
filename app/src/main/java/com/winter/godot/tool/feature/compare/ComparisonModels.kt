@@ -1,6 +1,20 @@
 package com.winter.godot.tool.feature.compare
 
 /**
+ * 一次导入或对比的实际进度与完成后目标。
+ * @property id 操作身份，用于隔离过期回调。
+ * @property comparing 是否为双版本对比。
+ * @property fraction 按实际输入字节计算的进度。
+ * @property saving 是否正在保存对比记录。
+ * @property finished 结果是否已提交。
+ * @property resultId 动画关闭后打开的记录。
+ * @author Tingdong
+ * @date 2026-11-26
+ */
+data class ComparisonProgress(val id: String, val comparing: Boolean, val fraction: Float = 0f,
+    val saving: Boolean = false, val finished: Boolean = false, val resultId: String? = null)
+
+/**
  * 可复用快照的格式及边界。
  * @author Tingdong
  * @date 2026-11-25

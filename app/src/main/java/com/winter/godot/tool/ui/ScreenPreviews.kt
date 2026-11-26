@@ -18,6 +18,7 @@ import com.winter.godot.tool.feature.compare.ChangeKind
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareUiState
 import com.winter.godot.tool.feature.compare.ComparisonMode
+import com.winter.godot.tool.feature.compare.ComparisonProgress
 import com.winter.godot.tool.feature.compare.ComparisonRecord
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
 import com.winter.godot.tool.feature.compare.ComparisonRow
@@ -76,7 +77,23 @@ private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "No
 @Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun ComparePreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
-    CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
+    CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {})
+} } }
+
+/** 对比进度对话框的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun ComparisonProcessingPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
+    CompareScreen(CompareUiState(running = true, historyLoading = false,
+        progress = ComparisonProgress("preview-comparing", comparing = true, fraction = 0.68f)), {}, {}, {}, {}, {}, {})
+} } }
+
+/** 快照读取中的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun ComparisonImportingPreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
+    CompareScreen(CompareUiState(loadingBefore = true, historyLoading = false,
+        progress = ComparisonProgress("preview-importing", comparing = false, fraction = 0.42f)), {}, {}, {}, {}, {}, {})
 } } }
 
 /**
@@ -88,7 +105,7 @@ private fun ComparisonSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.
     val header = SnapshotHeader(name = "Example", version = "1.0", catalogComplete = true, complete = true)
     val records = (1..3).map { index -> ComparisonRecord("11111111-1111-1111-1111-11111111111$index", index.toLong(),
         "Example 1.$index", "Example 1.${index + 1}", header, header.copy(version = "1.1"), listOf(1, 2, 3, 0, 0)) }
-    CompareScreen(CompareUiState(histories = records, selected = setOf(records.first().id), historyLoading = false), {}, {}, {}, {}, {}, {}, {})
+    CompareScreen(CompareUiState(histories = records, selected = setOf(records.first().id), historyLoading = false), {}, {}, {}, {}, {}, {})
 } } }
 
 /**
@@ -209,7 +226,7 @@ private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing
                 processing, {}, {}, {}, {}, {}, {}, {}, {}, logs = if (processing) (1..30).map {
                     com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件 scripts/components/player_controller_$it.gd")
                 } else emptyList())
-            else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
+            else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {})
             else SettingsScreen(settings, false, {}, {})
         }
     }

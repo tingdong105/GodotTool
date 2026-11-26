@@ -186,7 +186,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         model.preparePicker(if (old) "snapshot-old" else "snapshot-new")
                         model.navigate(Screen.COMPARE)
                         requestFiles()
-                    }, comparison::start, comparison::swap, comparison::cancel, comparison::open, comparison::selectHistory, comparison::deleteSelected)
+                    }, comparison::start, comparison::cancel, comparison::open, comparison::selectHistory, comparison::deleteSelected, comparison::finishProgress)
                     Screen.COMPARE_RESULT -> ComparisonResultScreen(comparisonUi, comparison::search, comparison::expandSearch, comparison::filter,
                         comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
                             if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }

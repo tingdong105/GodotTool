@@ -11,24 +11,28 @@ import java.io.RandomAccessFile
 object SnapshotDiff {
     /**
      * 对比两个快照，只让单个脚本驻留内存。
-     * 使用示例：SnapshotDiff.compare(old, new, output, check) {}。
+     * 使用示例：SnapshotDiff.compare(old, new, output, check) { count, bytes, total -> }。
      * @param before 旧版本输入。
      * @param after 新版本输入。
      * @param output 私有结果文件。
      * @param check 取消检查。
-     * @param progress 已合并的脚本数量。
+     * @param progress 已合并脚本数、已对比字节数与输入总字节数。
      * @return 来源与磁盘结果索引。
      */
-    fun compare(before: File, after: File, output: File, check: () -> Unit, progress: (Int) -> Unit): ComparisonResult {
+    fun compare(before: File, after: File, output: File, check: () -> Unit, progress: (Int, Long, Long) -> Unit): ComparisonResult {
         try {
             SnapshotIO.open(before).use { old -> SnapshotIO.open(after).use { new ->
                 require(old.header.packageName.isEmpty() || new.header.packageName.isEmpty() || old.header.packageName == new.header.packageName) { "SNAPSHOT_DIFFERENT_APP" }
                 val entries = mutableListOf<ComparisonEntry>()
+                val totalBytes = old.totalBytes + new.totalBytes
+                var processed = 0
+                progress(0, 0L, totalBytes)
                 RandomAccessFile(output, "rw").use { file ->
                     file.setLength(0)
                     var a = old.next()
                     var b = new.next()
-                    var processed = 0
+                    var oldBytes = 0L
+                    var newBytes = 0L
                     while (a != null || b != null) {
                         check()
                         val path = if (a == null) b!!.path else if (b == null) a.path else minOf(a.path, b.path)
@@ -44,11 +48,12 @@ object SnapshotDiff {
                                 ChangeKind.entries.map { kind -> change.changes.count { it.kind == kind && it.mode == ComparisonMode.METHODS } },
                                 ChangeKind.entries.map { kind -> change.changes.count { it.kind == kind && it.mode == ComparisonMode.CONSTANTS } })
                         }
-                        if (left != null) a = old.next()
-                        if (right != null) b = new.next()
-                        progress(++processed)
+                        if (left != null) { oldBytes = old.bytesRead; a = old.next() }
+                        if (right != null) { newBytes = new.bytesRead; b = new.next() }
+                        progress(++processed, oldBytes + newBytes, totalBytes)
                     }
                 }
+                progress(processed, totalBytes, totalBytes)
                 return ComparisonResult(old.header, new.header, entries, output)
             } }
         } catch (error: Throwable) { output.delete(); throw error }

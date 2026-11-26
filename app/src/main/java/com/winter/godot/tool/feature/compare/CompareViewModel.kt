@@ -39,6 +39,7 @@ data class SnapshotInput(val name: String, val cache: File, val header: Snapshot
 data class CompareUiState(
     val before: SnapshotInput? = null, val after: SnapshotInput? = null,
     val loadingBefore: Boolean = false, val loadingAfter: Boolean = false, val running: Boolean = false, val processed: Int = 0,
+    val progress: ComparisonProgress? = null,
     val histories: List<ComparisonRecord> = emptyList(), val selected: Set<String> = emptySet(), val historyLoading: Boolean = true,
     val record: ComparisonRecord? = null, val viewingId: String? = null, val opening: Boolean = false, val result: ComparisonResult? = null,
     val rows: List<ComparisonRow> = emptyList(), val totalRows: Int = 0,
@@ -52,7 +53,7 @@ data class CompareUiState(
     val loadingMore: Boolean = false, val loadMoreFailed: Boolean = false, val wrapLines: Boolean = true,
     val viewMode: ComparisonMode = ComparisonMode.METHODS,
 ) {
-    val busy: Boolean get() = running || loadingBefore || loadingAfter
+    val busy: Boolean get() = running || loadingBefore || loadingAfter || progress != null
     val hasMore: Boolean get() = rows.size < totalRows
 
     /**
@@ -82,6 +83,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     val ui = mutableUi.asStateFlow()
     private var beforeJob: Job? = null
     private var afterJob: Job? = null
+    private val restorationJobs = mutableListOf<Job>()
     private var compareJob: Job? = null
     private var filterJob: Job? = null
     private var moreJob: Job? = null
@@ -111,15 +113,23 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param restoring 是否优先使用会话缓存。
      */
     fun select(old: Boolean, path: String, restoring: Boolean = false) {
-        if (old) beforeJob?.cancel() else afterJob?.cancel()
+        if (!restoring && (ui.value.running || ui.value.progress != null)) return
+        val pendingInputs = if (restoring) emptyList() else (restorationJobs + listOfNotNull(beforeJob, afterJob)).distinct()
+        if (restoring) { if (old) beforeJob?.cancel() else afterJob?.cancel() }
         closeResult()
         val prefix = if (old) "old" else "new"
-        val previous = if (old) ui.value.before else ui.value.after
-        val restoredName = saved.get<String>("${prefix}SnapshotCache")
-        mutableUi.update { if (old) it.copy(loadingBefore = true, error = null) else it.copy(loadingAfter = true, error = null) }
+        val progress = if (restoring) null else ComparisonProgress(UUID.randomUUID().toString(), comparing = false)
+        mutableUi.update { if (old) it.copy(loadingBefore = true, error = null, progress = progress ?: it.progress)
+            else it.copy(loadingAfter = true, error = null, progress = progress ?: it.progress) }
         val job = viewModelScope.launch {
             var imported: File? = null
             try {
+                pendingInputs.joinAll()
+                coroutineContext.ensureActive()
+                val previous = if (old) ui.value.before else ui.value.after
+                val restoredName = saved.get<String>("${prefix}SnapshotCache")
+                if (!restoring) mutableUi.update { if (old) it.copy(loadingBefore = true, error = null)
+                    else it.copy(loadingAfter = true, error = null) }
                 val selected = withContext(Dispatchers.IO) {
                     val context = coroutineContext
                     check(cache.isDirectory || cache.mkdirs())
@@ -130,69 +140,121 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
                     }
                     SnapshotIO.open(source).use { cursor ->
                         SnapshotIO.write(destination, cursor.header, sequence {
-                            while (true) { context.ensureActive(); yield(cursor.next() ?: break) }
+                            while (true) {
+                                context.ensureActive()
+                                yield(cursor.next() ?: break)
+                                progress?.let { updateProgress(it.id, cursor.bytesRead, cursor.totalBytes) }
+                            }
                         }) { context.ensureActive() }
                         SnapshotInput(File(path).name, destination, cursor.header)
                     }
                 }
                 saved["${prefix}Snapshot"] = path; saved["${prefix}SnapshotCache"] = selected.cache.name
-                mutableUi.update { if (old) it.copy(before = selected, loadingBefore = false) else it.copy(after = selected, loadingAfter = false) }
+                mutableUi.update {
+                    val completed = it.progress?.let { current ->
+                        if (current.id == progress?.id) current.copy(fraction = 1f, finished = true) else current
+                    }
+                    if (old) it.copy(before = selected, loadingBefore = false, progress = completed)
+                    else it.copy(after = selected, loadingAfter = false, progress = completed)
+                }
                 imported = null
                 withContext(Dispatchers.IO) { previous?.cache?.delete() }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { mutableUi.update { if (old) it.copy(loadingBefore = false, error = errorResource(error)) else it.copy(loadingAfter = false, error = errorResource(error)) } }
+            catch (error: Exception) { coroutineContext.ensureActive(); mutableUi.update {
+                val remaining = it.progress?.takeUnless { current -> current.id == progress?.id }
+                if (old) it.copy(loadingBefore = false, error = errorResource(error), progress = remaining)
+                else it.copy(loadingAfter = false, error = errorResource(error), progress = remaining)
+            } }
             finally { withContext(NonCancellable + Dispatchers.IO) { imported?.delete() } }
         }
+        if (restoring) restorationJobs += job
         if (old) beforeJob = job else afterJob = job
     }
 
     /**
-     * 交换版本方向及其恢复引用。
-     */
-    fun swap() {
-        if (ui.value.busy) return
-        for (suffix in listOf("Snapshot", "SnapshotCache")) {
-            val a = saved.get<String>("old$suffix"); saved["old$suffix"] = saved.get<String>("new$suffix"); saved["new$suffix"] = a
-        }
-        mutableUi.update { it.copy(before = it.after, after = it.before, error = null) }
-    }
-
-    /**
-     * 比较、保存私有记录并发布公开报告。
+     * 比较并保存记录，成功后清空输入与会话恢复引用。
      */
     fun start() {
         val state = ui.value
         if (state.busy || state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
         val old = state.before ?: return; val new = state.after ?: return
         closeResult()
-        mutableUi.update { it.copy(running = true, processed = 0, error = null) }
+        val progress = ComparisonProgress(UUID.randomUUID().toString(), comparing = true)
+        mutableUi.update { it.copy(running = true, processed = 0, error = null, progress = progress) }
         compareJob = viewModelScope.launch {
             var output: File? = null
+            var completed = false
             try {
                 val persisted = withContext(Dispatchers.IO) {
                     val context = coroutineContext
                     val file = File(cache, "${UUID.randomUUID()}.diff"); output = file
-                    val result = SnapshotDiff.compare(old.cache, new.cache, file, { context.ensureActive() }) { count ->
-                        if (count % 32 == 0) mutableUi.update { it.copy(processed = count) }
+                    val result = SnapshotDiff.compare(old.cache, new.cache, file, { context.ensureActive() }) { count, bytes, total ->
+                        context.ensureActive()
+                        updateProgress(progress.id, bytes, total)
+                        if (count % 32 == 0 || bytes == total) mutableUi.update {
+                            if (it.progress?.id == progress.id) it.copy(processed = count) else it
+                        }
                     }
+                    mutableUi.update { if (it.progress?.id == progress.id) it.copy(progress = it.progress.copy(saving = true)) else it }
                     val record = history.save(result, old.header.name.ifBlank { old.name }, new.header.name.ifBlank { new.name }, state.rules) { context.ensureActive() }
                     try { history.publish(record) { context.ensureActive() } }
                     catch (error: CancellationException) { throw error }
                     catch (_: Exception) { record }
                 }
-                mutableUi.update { it.copy(running = false) }; open(persisted.id)
+                completed = true
+                for (prefix in listOf("old", "new")) {
+                    saved.remove<String>("${prefix}Snapshot")
+                    saved.remove<String>("${prefix}SnapshotCache")
+                }
+                mutableUi.update { it.copy(before = null, after = null, running = false,
+                    progress = it.progress?.copy(fraction = 1f, finished = true, resultId = persisted.id)) }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { mutableUi.update { it.copy(running = false, error = errorResource(error)) } }
-            finally { withContext(NonCancellable + Dispatchers.IO) { output?.delete() }; refreshHistory() }
+            catch (error: Exception) { coroutineContext.ensureActive(); mutableUi.update { it.copy(running = false, progress = null, error = errorResource(error)) } }
+            finally {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    output?.delete()
+                    if (completed) { old.cache.delete(); new.cache.delete() }
+                }
+                refreshHistory()
+            }
         }
     }
 
     /**
-     * 取消计算，保留已提交记录和已完成输入。
+     * 取消当前解析或对比，保留已完成的文件选择。
      */
     fun cancel() {
+        val progress = ui.value.progress ?: return
+        if (progress.finished) return
+        restorationJobs.forEach { it.cancel() }
         beforeJob?.cancel(); afterJob?.cancel(); compareJob?.cancel()
-        mutableUi.update { it.copy(running = false, loadingBefore = false, loadingAfter = false) }
+        mutableUi.update { it.copy(running = false, loadingBefore = false, loadingAfter = false, progress = null) }
+    }
+
+    /**
+     * 按实际字节推进当前操作，隔离已取消的任务回调。
+     * @param id 操作身份。
+     * @param bytes 已完成的输入字节。
+     * @param total 总输入字节。
+     */
+    private fun updateProgress(id: String, bytes: Long, total: Long) {
+        val fraction = (bytes.toDouble() / total.coerceAtLeast(1L)).coerceIn(0.0, 1.0).toFloat()
+        mutableUi.update { state ->
+            val progress = state.progress
+            if (progress == null || progress.id != id || fraction <= progress.fraction ||
+                fraction < 1f && fraction - progress.fraction < 0.001f) state
+            else state.copy(progress = progress.copy(fraction = fraction))
+        }
+    }
+
+    /**
+     * 完成进度收尾，弹窗退出后再打开已保存的结果。
+     * @param id 已播放完成的操作身份。
+     */
+    fun finishProgress(id: String) {
+        val progress = ui.value.progress?.takeIf { it.id == id && it.finished } ?: return
+        mutableUi.update { it.copy(progress = null) }
+        progress.resultId?.let(::open)
     }
 
     /**
@@ -591,7 +653,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 回收会话缓存，持久历史独立保留。
      */
     override fun onCleared() {
-        val jobs = listOfNotNull(beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, rulesLoadJob, starJob, publishJob)
+        val jobs = (listOfNotNull(beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, rulesLoadJob, starJob, publishJob) + restorationJobs).distinct()
         jobs.forEach { it.cancel() }
         val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         cleanup.launch {

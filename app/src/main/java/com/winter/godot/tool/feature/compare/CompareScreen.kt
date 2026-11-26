@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -73,15 +74,15 @@ import java.util.Date
  * @param state 对比与历史状态。
  * @param onChoose 选择旧版或新版。
  * @param onStart 开始比较。
- * @param onSwap 交换方向。
- * @param onCancel 取消任务。
+ * @param onCancel 取消解析或对比。
  * @param onOpen 打开历史。
  * @param onSelect 切换历史选择。
  * @param onDelete 删除已选记录。
+ * @param onProgressFinished 进度对话框关闭后确认完成。
  */
 @Composable
-fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: () -> Unit, onSwap: () -> Unit, onCancel: () -> Unit,
-    onOpen: (String) -> Unit, onSelect: (String) -> Unit, onDelete: () -> Unit) {
+fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: () -> Unit, onCancel: () -> Unit,
+    onOpen: (String) -> Unit, onSelect: (String) -> Unit, onDelete: () -> Unit, onProgressFinished: (String) -> Unit = {}) {
     var deleting by remember { mutableStateOf(false) }
     val wide = LocalWideContent.current
     val historyList = rememberLazyListState()
@@ -91,14 +92,6 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
     val bottomPadding by animateDpAsState(if (selecting) FloatingActionButtonDefaults.MinHeight + Theme.spacing.xxl else Theme.spacing.md,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f), label = "historyBottomPadding")
     LaunchedEffect(selecting) { if (!selecting) deleting = false }
-    val progress: @Composable () -> Unit = {
-        Card {
-            Row(Modifier.padding(Theme.spacing.lg), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-                CircularProgressIndicator()
-                Text(stringResource(if (state.running) R.string.compare_processing else R.string.compare_importing, state.processed), style = Theme.typography.body)
-            }
-        }
-    }
     val history: LazyListScope.() -> Unit = {
         item(key = "history-title") {
             SectionTitle(stringResource(R.string.compare_history))
@@ -107,7 +100,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
             Box(Modifier.fillParentMaxHeight(0.5f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
         else if (state.histories.isEmpty()) item(key = "history-empty") {
-            EmptyContent(stringResource(R.string.compare_empty), stringResource(R.string.compare_empty_detail), R.drawable.ic_compare)
+            EmptyContent(stringResource(R.string.compare_empty), icon = R.drawable.ic_compare)
         }
         items(state.histories, key = { it.id }) { record ->
             HistoryRow(record, record.id in state.selected, state.selected.isNotEmpty(), { onOpen(record.id) }, { onSelect(record.id) })
@@ -119,8 +112,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
                 contentPadding = PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.md, bottom = bottomPadding + navigationInset),
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 if (showInputs) {
-                    item(key = "inputs") { ComparisonInputs(state, onChoose, onStart, onSwap, onCancel) }
-                    if (state.busy) item(key = "progress") { progress() }
+                    item(key = "inputs") { ComparisonInputs(state, onChoose, onStart) }
                     state.error?.let { error -> item(key = "error") { Text(stringResource(error), color = MiuixTheme.colorScheme.error) } }
                 }
                 history()
@@ -136,8 +128,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
             if (wide) Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(inputScroll)
                 .padding(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.sm, bottom = Theme.spacing.md),
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-                ComparisonInputs(state, onChoose, onStart, onSwap, onCancel)
-                if (state.busy) progress()
+                ComparisonInputs(state, onChoose, onStart)
                 state.error?.let { error -> Text(stringResource(error), color = MiuixTheme.colorScheme.error) }
             }
             historyPane(Modifier.weight(1f).fillMaxHeight(), !wide)
@@ -150,6 +141,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
             PrimaryButton(stringResource(R.string.compare_confirm_delete), { deleting = false; if (state.selected.isNotEmpty()) onDelete() }, Modifier.weight(1f))
         }
     }
+    state.progress?.let { progress -> key(progress.id) { ComparisonProgressDialog(progress, onCancel, onProgressFinished) } }
 }
 
 /**
@@ -174,21 +166,14 @@ private fun ComparisonDeleteAction(selecting: Boolean, onDelete: () -> Unit, mod
  * @param state 当前对比状态。
  * @param onChoose 选择版本快照。
  * @param onStart 开始比较。
- * @param onSwap 交换两个版本。
- * @param onCancel 取消处理。
  */
 @Composable
-private fun ComparisonInputs(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: () -> Unit,
-    onSwap: () -> Unit, onCancel: () -> Unit) {
+private fun ComparisonInputs(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
         SnapshotCard(R.string.compare_old, state.before, state.loadingBefore, !state.busy) { onChoose(true) }
         SnapshotCard(R.string.compare_new, state.after, state.loadingAfter, !state.busy) { onChoose(false) }
-        Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-            TextButton(stringResource(R.string.compare_swap), onSwap, Modifier.weight(1f), enabled = !state.busy)
-            if (state.busy) TextButton(stringResource(R.string.cancel), onCancel, Modifier.weight(1f))
-            else PrimaryButton(stringResource(R.string.compare_start), onStart, Modifier.weight(1f), enabled = state.before != null && state.after != null &&
-                !state.rulesLoading && !state.rulesLoadFailed && !state.rulesSaving)
-        }
+        PrimaryButton(stringResource(R.string.compare_start), onStart, Modifier.fillMaxWidth(), enabled = !state.busy && state.before != null && state.after != null &&
+            !state.rulesLoading && !state.rulesLoadFailed && !state.rulesSaving)
     }
 }
 
