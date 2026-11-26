@@ -35,6 +35,7 @@ import androidx.compose.ui.res.vectorResource
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.theme.Theme
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Button
@@ -50,6 +51,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Share
+import top.yukonga.miuix.kmp.layout.DialogDefaults
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -152,7 +154,7 @@ fun SectionTitle(text: String) {
  */
 @Composable
 fun ToolDialog(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    OverlayDialog(show = true, title = title, onDismissRequest = onDismiss) {
+    OverlayDialog(show = true, title = title, maxWidth = if (ToolDevice.isPad) Theme.sizes.dialogMax else DialogDefaults.MaxWidth, onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Theme.spacing.lg)) {
             content()
         }

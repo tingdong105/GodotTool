@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.WorkspaceEntry
+import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.FileSearch
@@ -82,16 +84,20 @@ fun WorkspaceScreen(state: ToolUiState, onPreview: (WorkspaceEntry) -> Unit, act
     val sourceCount = remember(state.entries) { state.entries.count { it.extension == "gd" } }
     val filtered = remember(state.entries, search, category, base) { state.entries.filter { it.path.startsWith(base) && (category == "all" || it.category == category) && (search.isEmpty() || it.path.contains(search, true)) } }
     val rows = remember(filtered, prefix, search, base) { browserRows(filtered, base + prefix, search.isNotEmpty()) }
+    val tablet = ToolDevice.isPad
+    val browserList = rememberSaveable(state.workspaceId, base, prefix, search, category, saver = LazyListState.Saver) { LazyListState() }
+    val previewList = rememberSaveable(state.workspaceId, state.previewPath, saver = LazyListState.Saver) { LazyListState() }
     if (state.loading) { LoadingContent(); return }
     var filtering by rememberSaveable { mutableStateOf(false) }
     val categories = listOf("all" to R.string.all_files, "scripts" to R.string.scripts, "scenes" to R.string.scenes, "images" to R.string.images)
-    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = Theme.spacing.md)) {
-        val wide = maxWidth >= Theme.sizes.tabletBreakpoint
+    val tabletLandscape = tablet && ToolDevice.isLandscape
+    BoxWithConstraints(Modifier.fillMaxSize().then(if (tablet) Modifier else Modifier.padding(horizontal = Theme.spacing.md))) {
+        val wide = (!tablet || tabletLandscape) && maxWidth >= Theme.sizes.tabletBreakpoint
         BackHandler(enabled = active && prefix.isNotEmpty() && state.previewPath == null && !filtering) {
             prefix = prefix.trimEnd('/').substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
         }
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-            if (wide || state.previewPath == null) Column(if (wide) Modifier.width(Theme.sizes.browserWidth) else Modifier.weight(1f)) {
+        Row(Modifier.fillMaxSize().then(if (tablet) Modifier.padding(horizontal = Theme.spacing.md) else Modifier), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
+            if (wide || state.previewPath == null) Column((if (wide) Modifier.width(Theme.sizes.browserWidth) else Modifier.weight(1f)).then(if (tablet) Modifier.fillMaxHeight() else Modifier)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FileSearch(search, stringResource(R.string.search_files), { search = it.take(512) }, Modifier.weight(1f))
                     IconButton(onClick = { filtering = true }) {
@@ -107,7 +113,7 @@ fun WorkspaceScreen(state: ToolUiState, onPreview: (WorkspaceEntry) -> Unit, act
                 if (rows.isEmpty()) EmptyContent(stringResource(R.string.no_results))
                 else Card(Modifier.weight(1f, fill = false)) {
                     key(base, prefix, search, category) {
-                        LazyColumn {
+                        LazyColumn(state = browserList) {
                             items(rows, key = { it.path }) { row ->
                                 val entry = row.entry
                                 if (entry == null) ArrowPreference(title = row.name, endActions = { Text(row.count.toString(), style = Theme.typography.number) },
@@ -122,7 +128,7 @@ fun WorkspaceScreen(state: ToolUiState, onPreview: (WorkspaceEntry) -> Unit, act
                 }
                 if (report != null) ArrowPreference(title = stringResource(R.string.view_report), onClick = { onPreview(report) })
             }
-            if (wide || state.previewPath != null) Card(Modifier.weight(1f).fillMaxHeight()) { FilePreview(state) }
+            if (wide || state.previewPath != null) Card(Modifier.weight(1f).fillMaxHeight()) { FilePreview(state, previewList) }
         }
     }
     if (filtering) ToolDialog(stringResource(R.string.filter_files), { filtering = false }) {
@@ -140,9 +146,10 @@ fun WorkspaceScreen(state: ToolUiState, onPreview: (WorkspaceEntry) -> Unit, act
 /**
  * 展示受限大小的图片、文本或二进制预览。
  * @param state 已加载的预览状态。
+ * @param list 跨窗口布局保留的文本阅读位置。
  */
 @Composable
-private fun FilePreview(state: ToolUiState) {
+private fun FilePreview(state: ToolUiState, list: LazyListState) {
     if (state.previewPath == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyContent(stringResource(R.string.preview_empty), icon = R.drawable.ic_file) }; return }
     if (state.previewLoading) { LoadingContent(); return }
     val entry = state.entries.firstOrNull { it.path == state.previewPath }
@@ -155,7 +162,7 @@ private fun FilePreview(state: ToolUiState) {
         if (image != null) Image(image.asImageBitmap(), state.previewPath, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         else {
             val lines = remember(state.previewText) { state.previewText.lines() }
-            SelectionContainer(Modifier.fillMaxWidth().weight(1f)) { LazyColumn(Modifier.fillMaxSize()) { items(lines.size) { index -> Text(lines[index].ifEmpty { " " }, style = Theme.typography.code) } } }
+            SelectionContainer(Modifier.fillMaxWidth().weight(1f)) { LazyColumn(Modifier.fillMaxSize(), state = list) { items(lines.size) { index -> Text(lines[index].ifEmpty { " " }, style = Theme.typography.code) } } }
         }
     }
 }

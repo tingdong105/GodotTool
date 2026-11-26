@@ -56,6 +56,12 @@ import com.winter.godot.tool.ui.theme.GodotToolTheme
 @Preview(name = "手机·暗色", widthDp = 393, heightDp = 852, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Preview(name = "平板·浅色", widthDp = 1280, heightDp = 800, showBackground = true)
 @Preview(name = "平板·暗色", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "平板竖屏·浅色", widthDp = 800, heightDp = 1280, showBackground = true)
+@Preview(name = "平板竖屏·暗色", widthDp = 800, heightDp = 1280, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "分屏·浅色", widthDp = 600, heightDp = 800, showBackground = true)
+@Preview(name = "分屏·暗色", widthDp = 600, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "大平板竖屏·浅色", widthDp = 960, heightDp = 1280, showBackground = true)
+@Preview(name = "大平板竖屏·暗色", widthDp = 960, heightDp = 1280, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)
 annotation class ScreenPreviews
@@ -66,6 +72,8 @@ private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "No
 
 /** 对比页面的手机和平板明暗预览。 */
 @ScreenPreviews
+@Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
+@Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun ComparePreview() { GodotToolTheme { ToolScaffold(Screen.COMPARE) {
     CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
@@ -87,21 +95,52 @@ private fun ComparisonSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.
  * 对比结果的手机和平板明暗预览。
  */
 @ScreenPreviews
+@Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
+@Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-private fun ComparisonResultPreview() { GodotToolTheme {
+private fun ComparisonResultPreview() { ComparisonResultPreviewContent() }
+
+/** 搜索展开状态的手机、平板与分屏预览。 */
+@ScreenPreviews
+@Composable
+private fun ComparisonSearchPreview() { ComparisonResultPreviewContent(searchInitially = true) }
+
+/**
+ * 提供可交互的结果搜索与换行预览。
+ * @param searchInitially 首次展示时是否展开搜索。
+ */
+@Composable
+private fun ComparisonResultPreviewContent(searchInitially: Boolean = false) { GodotToolTheme {
     val header = SnapshotHeader(name = "Example", version = "1.0", engine = "4.5", catalogComplete = true, complete = true)
     val record = ComparisonRecord("11111111-1111-1111-1111-111111111111", 0, "Example 1.0", "Example 1.1", header,
-        header.copy(version = "1.1"), listOf(1, 1, 0, 0, 0), "261125_1")
-    ComparisonResultScreen(CompareUiState(record = record, viewingId = record.id, historyLoading = false,
-        counts = record.counts, matchedCounts = record.counts, rows = listOf(ComparisonRow("scripts/player.gd", MethodChange(ChangeKind.MODIFIED, "take_damage",
-            "func take_damage ( amount : int )", "func take_damage ( amount : int , source = null )", true, true), true))),
-        {}, {}, {}, {}, {}, {}, {}, {}, {})
+        header.copy(version = "1.1"), listOf(8, 8, 8, 0, 0), "261125_1")
+    var wrap by remember { mutableStateOf(true) }
+    var search by remember { mutableStateOf(searchInitially) }
+    var query by remember { mutableStateOf("") }
+    ComparisonResultScreen(CompareUiState(record = record, viewingId = record.id, historyLoading = false, wrapLines = wrap, searchExpanded = search, query = query,
+        counts = record.counts, matchedCounts = record.counts, rows = comparisonPreviewRows()),
+        { query = it }, { search = it; if (!it) query = "" }, {}, {}, {}, { wrap = it }, {}, {}, { search = false; query = "" })
 } }
 
 /**
- * 工作台的四种设备与主题预览。
+ * 生成包含长路径和长参数的三类对比示例。
+ * @return 按增改删分组的示例条目。
+ */
+private fun comparisonPreviewRows(): List<ComparisonRow> = (0 until 24).map { index ->
+    val kind = listOf(ChangeKind.ADDED, ChangeKind.MODIFIED, ChangeKind.REMOVED)[index / 8]
+    ComparisonRow("addons/example_plugin/gameplay/characters/components/player_controller_$index.gd",
+        MethodChange(kind, "update_player_$index",
+            if (kind == ChangeKind.ADDED) "" else "func update_player_$index ( delta : float , movement_direction : Vector3 , camera_rotation : Vector3 )",
+            if (kind == ChangeKind.REMOVED) "" else "func update_player_$index ( delta : float , movement_direction : Vector3 , camera_rotation : Vector3 , movement_speed : float = 10.0 , allow_air_control : bool = true )",
+            kind != ChangeKind.ADDED, kind != ChangeKind.REMOVED), index % 4 == 0)
+}
+
+/**
+ * 工作台的手机、平板与分屏明暗预览。
  */
 @ScreenPreviews
+@Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
+@Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun HomePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) { HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {}) } } }
 
@@ -112,28 +151,64 @@ private fun HomePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) { HomeScr
 @Composable
 private fun RootTabsPreview() { RootTabsPreviewContent(false, false) }
 
+/** 导航 600dp 与侧栏后内容 840dp 的断点预览。 */
+@Preview(name = "窗口599·浅色", widthDp = 599, heightDp = 800, showBackground = true)
+@Preview(name = "窗口599·暗色", widthDp = 599, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "窗口600·浅色", widthDp = 600, heightDp = 800, showBackground = true)
+@Preview(name = "窗口600·暗色", widthDp = 600, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "窗口919·浅色", widthDp = 919, heightDp = 800, showBackground = true)
+@Preview(name = "窗口919·暗色", widthDp = 919, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "窗口920·浅色", widthDp = 920, heightDp = 800, showBackground = true)
+@Preview(name = "窗口920·暗色", widthDp = 920, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
+@Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+private fun AdaptiveNavigationPreview() { RootTabsPreviewContent(false, false, initialScreen = Screen.COMPARE) }
+
+/** 超宽结果页验证不受居中内容上限影响。 */
+@Preview(name = "超宽结果·浅色", widthDp = 1600, heightDp = 900, showBackground = true)
+@Preview(name = "超宽结果·暗色", widthDp = 1600, heightDp = 900, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+private fun WideComparisonResultPreview() { ComparisonResultPreview() }
+
 /** 实色悬浮底栏的手机和平板明暗预览。 */
 @ScreenPreviews
 @Composable
-private fun FloatingTabsPreview() { RootTabsPreviewContent(true, false) }
+private fun FloatingTabsPreview() { RootTabsPreviewContent(true, false, processing = true) }
 
 /** 液态玻璃底栏的手机和平板明暗预览。 */
 @ScreenPreviews
 @Composable
-private fun GlassTabsPreview() { RootTabsPreviewContent(true, true) }
+private fun GlassTabsPreview() { RootTabsPreviewContent(true, true, processing = true) }
+
+/** 对比页的悬浮导航与方向回归预览。 */
+@ScreenPreviews
+@Composable
+private fun FloatingCompareTabsPreview() { RootTabsPreviewContent(true, false, initialScreen = Screen.COMPARE) }
+
+/** 设置页的悬浮导航与方向回归预览。 */
+@ScreenPreviews
+@Composable
+private fun FloatingSettingsTabsPreview() { RootTabsPreviewContent(true, false, initialScreen = Screen.SETTINGS) }
 
 /**
  * 为三种导航模式提供统一预览内容。
  * @param floating 是否使用悬浮底栏。
  * @param glass 是否使用液态玻璃。
+ * @param processing 是否展示处理步骤与右侧日志。
+ * @param initialScreen 初始导航页面。
  */
 @Composable
-private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean) {
-    var screen by remember { mutableStateOf(Screen.HOME) }
+private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing: Boolean = false, initialScreen: Screen = Screen.HOME) {
+    var screen by remember { mutableStateOf(initialScreen) }
     val settings = ToolSettings(floatingBottomBar = floating, liquidGlass = glass)
     GodotToolTheme {
         RootTabs(screen, true, { screen = it }, floating, glass) { page ->
-            if (page == Screen.HOME) HomeScreen(ToolUiState(), ToolSettings(), exampleTask, false, {}, {}, {}, {}, {}, {}, {}, {})
+            if (page == Screen.HOME) HomeScreen(ToolUiState(homeStep = if (processing) 3 else 1), ToolSettings(),
+                if (processing) exampleTask.copy(status = TaskStatus.RUNNING, stage = "recover", overallProgress = 0.62f) else exampleTask,
+                processing, {}, {}, {}, {}, {}, {}, {}, {}, logs = if (processing) (1..30).map {
+                    com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件 scripts/components/player_controller_$it.gd")
+                } else emptyList())
             else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {}, {})
             else SettingsScreen(settings, false, {}, {})
         }
@@ -141,7 +216,7 @@ private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean) {
 }
 
 /**
- * 任务页的四种设备与主题预览。
+ * 任务页的手机、平板与分屏明暗预览。
  */
 @ScreenPreviews
 @Composable
@@ -170,6 +245,8 @@ private fun TasksSelectionPreview() { GodotToolTheme {
  * 设置页的四种设备与主题预览。
  */
 @ScreenPreviews
+@Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
+@Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), false, {}, {}) } } }
 

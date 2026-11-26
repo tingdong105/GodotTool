@@ -7,16 +7,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -51,6 +59,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.winter.godot.tool.R
+import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.theme.Theme
 import top.yukonga.miuix.kmp.basic.Card
@@ -123,7 +132,9 @@ fun AboutScreen(state: AboutUiState, active: Boolean, onBack: () -> Unit, onSour
     val topBackdrop = if (supported) rememberLayerBackdrop() else null
     val surface = MiuixTheme.colorScheme.surface
     val topColors = BlurDefaults.blurColors(blendColors = listOf(BlendColorEntry(surface.copy(alpha = 0.8f))))
-    Scaffold(modifier = Modifier.fillMaxSize(), topBar = {
+    val tablet = ToolDevice.isPad
+    Scaffold(modifier = Modifier.fillMaxSize().then(if (tablet) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)) else Modifier),
+        contentWindowInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout), topBar = {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
             SmallTopAppBar(title = stringResource(R.string.about_software),
                 modifier = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth().then(

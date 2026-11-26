@@ -115,9 +115,11 @@ private fun ProcessingAnimation() {
  * 关键日志按状态着色，追加与换行后始终贴住底部。
  * @param task 当前任务，重建界面时补充当前状态。
  * @param logs 已筛选的用户日志。
+ * @param modifier 日志区域布局。
+ * @param fillHeight 是否由父容器提供高度，供宽屏日志使用。
  */
 @Composable
-fun TaskLogs(task: TaskRecord, logs: List<TaskLogLine>) {
+fun TaskLogs(task: TaskRecord, logs: List<TaskLogLine>, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
     val scroll = rememberScrollState()
     val shown = remember(task.id, task.status, task.stage, logs) {
         if (logs.isNotEmpty()) logs else listOf(TaskLogLine(task.stage, ""))
@@ -128,7 +130,7 @@ fun TaskLogs(task: TaskRecord, logs: List<TaskLogLine>) {
             if (bottom > 0 && bottom != Int.MAX_VALUE) scroll.scrollTo(bottom)
         }
     }
-    Column(Modifier.fillMaxWidth().heightIn(max = Theme.sizes.row * 3).verticalScroll(scroll),
+    Column(modifier.fillMaxWidth().then(if (fillHeight) Modifier else Modifier.heightIn(max = Theme.sizes.row * 3)).verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
         shown.forEach { line ->
             val color = when (line.level) {

@@ -100,6 +100,8 @@ class ToolSizes {
     val innerCorner = 12.dp
     val browserWidth = 360.dp
     val contentMax = 680.dp
+    val wideContentMax = 1200.dp
+    val navigationBreakpoint = 600.dp
     val dialogMax = 560.dp
     val tabletBreakpoint = 840.dp
 }

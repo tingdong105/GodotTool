@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -32,14 +34,18 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.ThemeMode
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
+import com.winter.godot.tool.ui.AdaptiveColumns
 import com.winter.godot.tool.ui.LocalRootBottomInset
+import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
+import com.winter.godot.tool.ui.rememberMovableToolContent
 import com.winter.godot.tool.ui.theme.Theme
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -70,6 +76,8 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
     onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}, onComparisonFocusRules: () -> Unit = {}) {
     var clearing by remember { mutableStateOf(false) }
+    val phoneList = rememberLazyListState()
+    val tabletScroll = rememberScrollState()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -77,55 +85,66 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
     val outputPath = stringResource(R.string.output_path)
     val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
     val bottomInset = LocalRootBottomInset.current
-    LazyColumn(contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-        top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset)) {
-        item {
-            SectionTitle(stringResource(R.string.theme))
-            Card {
-                ThemeModePreference(settings.theme, onThemeChange, onThemePrepare, onThemeDismiss)
-                SwitchPreference(settings.floatingBottomBar, { onChange(settings.copy(floatingBottomBar = it)) },
-                    stringResource(R.string.floating_bottom_bar))
-                AnimatedVisibility(settings.floatingBottomBar) {
-                    Column {
-                        SwitchPreference(checked = settings.liquidGlass && glassSupported,
-                            onCheckedChange = { onChange(settings.copy(liquidGlass = it)) },
-                            title = stringResource(R.string.liquid_glass), enabled = glassSupported)
-                    }
+    val appearance = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.theme))
+        Card {
+            ThemeModePreference(settings.theme, onThemeChange, onThemePrepare, onThemeDismiss)
+            SwitchPreference(settings.floatingBottomBar, { onChange(settings.copy(floatingBottomBar = it)) },
+                stringResource(R.string.floating_bottom_bar))
+            AnimatedVisibility(settings.floatingBottomBar) {
+                Column {
+                    SwitchPreference(checked = settings.liquidGlass && glassSupported,
+                        onCheckedChange = { onChange(settings.copy(liquidGlass = it)) },
+                        title = stringResource(R.string.liquid_glass), enabled = glassSupported)
                 }
             }
         }
-        item {
-            SectionTitle(stringResource(R.string.recovery_content))
-            Card {
-                RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) }, embedded = true)
-                SwitchPreference(settings.snapshot.generate, { onChange(settings.copy(snapshot = SnapshotOptions(it))) }, stringResource(R.string.generate_snapshot))
-            }
+    }
+    val recovery = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.recovery_content))
+        Card {
+            RecoveryOptions(settings.selection, { onChange(settings.withSelection(it)) }, embedded = true)
+            SwitchPreference(settings.snapshot.generate, { onChange(settings.copy(snapshot = SnapshotOptions(it))) }, stringResource(R.string.generate_snapshot))
         }
-        item {
-            SectionTitle(stringResource(R.string.compare))
-            Card {
-                ArrowPreference(title = stringResource(R.string.compare_filter_rules), onClick = onComparisonRules)
-                ArrowPreference(title = stringResource(R.string.compare_focus_rules), onClick = onComparisonFocusRules)
-            }
+    }
+    val comparison = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.compare))
+        Card {
+            ArrowPreference(title = stringResource(R.string.compare_filter_rules), onClick = onComparisonRules)
+            ArrowPreference(title = stringResource(R.string.compare_focus_rules), onClick = onComparisonFocusRules)
         }
-        item {
-            SectionTitle(stringResource(R.string.storage))
-            Card {
-                BasicComponent(title = outputLabel, summary = outputPath, onClick = {
-                    scope.launch {
-                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(outputLabel, outputPath)))
-                        Toast.makeText(context, R.string.output_directory_copied, Toast.LENGTH_SHORT).show()
-                    }
-                })
-                ArrowPreference(title = stringResource(R.string.clear_cache), enabled = !busy, onClick = { clearing = true })
-            }
+    }
+    val storage = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.storage))
+        Card {
+            BasicComponent(title = outputLabel, summary = outputPath, onClick = {
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(outputLabel, outputPath)))
+                    Toast.makeText(context, R.string.output_directory_copied, Toast.LENGTH_SHORT).show()
+                }
+            })
+            ArrowPreference(title = stringResource(R.string.clear_cache), enabled = !busy, onClick = { clearing = true })
         }
-        item {
-            SectionTitle(stringResource(R.string.about))
-            Card {
-                ArrowPreference(title = stringResource(R.string.about_software), onClick = onAbout)
-            }
+    }
+    val about = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.about))
+        Card {
+            ArrowPreference(title = stringResource(R.string.about_software), onClick = onAbout)
         }
+    }
+    if (ToolDevice.isPhone) {
+        LazyColumn(state = phoneList, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset)) {
+            item { appearance() }
+            item { recovery() }
+            item { comparison() }
+            item { storage() }
+            item { about() }
+        }
+    } else {
+        AdaptiveColumns(scrollState = tabletScroll, spacing = 0.dp, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset),
+            primary = { appearance(); recovery() }, secondary = { comparison(); storage(); about() })
     }
     if (clearing) ConfirmDialog(stringResource(R.string.clear_cache_title), stringResource(R.string.clear_cache_detail),
         { clearing = false }, { clearing = false; onClear() })

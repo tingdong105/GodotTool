@@ -10,6 +10,7 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -20,11 +21,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -83,6 +87,7 @@ import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.runtime.NavProgrammaticEasing
 import top.yukonga.miuix.kmp.nav.transition.NavMotion
 import top.yukonga.miuix.kmp.nav.transition.NavSettleSpec
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.nav.transition.NavTransition
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -160,7 +165,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
         activeRuleGroup != null && comparisonUi.ruleList(activeRuleGroup).selectedIds.isNotEmpty() ||
         ui.screen == Screen.TASKS && ui.selectedTasks.isNotEmpty(), onBack = back)
     ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
-        ToolNavHost(model.navEntries, ui, back) { screen, pageUi ->
+        ToolNavHost(model.navEntries, ui, back, interceptBack = ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded) { screen, pageUi ->
             val ruleGroup = screen.comparisonRuleGroup()
             val ruleList = ruleGroup?.let(comparisonUi::ruleList)
             val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
@@ -185,7 +190,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     Screen.COMPARE_RESULT -> ComparisonResultScreen(comparisonUi, comparison::search, comparison::expandSearch, comparison::filter,
                         comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
                             if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
-                        }, back)
+                        }, back, active = destination == ui.screen)
                     Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
                         ui.selectedTasks, ui.deletingTasks, model::selectTask)
                     Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
@@ -259,10 +264,12 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
  * @param backStack 以首页或设置开头的业务返回栈。
  * @param ui 当前页面的业务状态。
  * @param onBack 弹栈或页面内逐层返回。
+ * @param interceptBack 页面正在消费返回时禁用页面拖动退出。
  * @param content 页面内容，离场时保留最后一份状态。
  */
 @Composable
-fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, content: @Composable (Screen, ToolUiState) -> Unit) {
+fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, interceptBack: Boolean = false,
+    content: @Composable (Screen, ToolUiState) -> Unit) {
     val currentUi by rememberUpdatedState(ui)
     val currentContent by rememberUpdatedState(content)
     val corner = maxOf(rememberNavSystemCornerRadius(), Theme.sizes.corner)
@@ -270,7 +277,8 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, co
         backdropColor = MiuixTheme.colorScheme.surface)
     NavDisplay(backStack = backStack, modifier = Modifier.fillMaxSize(), onBack = onBack,
         transition = toolPageTransition, effects = effects) {
-        entry<Screen>(contentKey = { if (it.isRoot()) "root" else it.name }) { screen ->
+        entry<Screen>(contentKey = { if (it.isRoot()) "root" else it.name },
+            swipeDismiss = if (interceptBack) NavSwipeDirection.None else null) { screen ->
             var snapshot by remember { mutableStateOf(currentUi) }
             if (currentUi.screen == screen) snapshot = currentUi
             Box(Modifier.fillMaxSize().then(if (currentUi.screen == screen) Modifier else Modifier.clearAndSetSemantics {})) {
@@ -308,36 +316,51 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Screen.WORKSPACE -> workspaceName.ifEmpty { stringResource(R.string.workspace) }
     }
     val pages = rememberSaveableStateHolder()
-    key(screen) {
-        val scroll = MiuixScrollBehavior(rememberTopAppBarState())
-        val width = if (screen == Screen.WORKSPACE) Modifier.fillMaxWidth() else Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
-        Scaffold(modifier = Modifier.fillMaxSize().imePadding().then(if (root) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier), topBar = {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                if (root) TopAppBar(title, modifier = width, scrollBehavior = scroll, actions = {
-                    if (screen == Screen.HOME) IconButton(onClick = { onNavigate(Screen.TASKS) }, modifier = Modifier.size(Theme.sizes.largeIcon)) {
-                        ToolIcon(R.drawable.ic_tasks, description = stringResource(R.string.history))
+    val tablet = ToolDevice.isPad
+    val tabletLandscape = tablet && ToolDevice.isLandscape
+    val pageInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    val scaffold: @Composable (Boolean) -> Unit = { wide ->
+        CompositionLocalProvider(LocalWideContent provides wide) {
+            key(screen) {
+                val scroll = MiuixScrollBehavior(rememberTopAppBarState())
+                val width = when {
+                    screen == Screen.WORKSPACE -> Modifier.fillMaxWidth()
+                    wide -> Modifier.widthIn(max = Theme.sizes.wideContentMax).fillMaxWidth()
+                    else -> Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
+                }
+                Scaffold(modifier = Modifier.fillMaxSize().imePadding().then(if (root) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier), topBar = {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        if (root) TopAppBar(title, modifier = width, scrollBehavior = scroll, actions = {
+                            if (screen == Screen.HOME) IconButton(onClick = { onNavigate(Screen.TASKS) }, modifier = Modifier.size(Theme.sizes.largeIcon)) {
+                                ToolIcon(R.drawable.ic_tasks, description = stringResource(R.string.history))
+                            }
+                        })
+                        else SmallTopAppBar(title = title, modifier = width, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
+                            actions = { actions() }, navigationIcon = {
+                            IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
+                        })
                     }
-                })
-                else SmallTopAppBar(title = title, modifier = width, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
-                    actions = { actions() }, navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
-                })
-            }
-        }, contentWindowInsets = if (root && floatingNavigation)
-            WindowInsets.systemBars
-                .union(WindowInsets.displayCutout)
-                .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-            else WindowInsets.systemBars.union(WindowInsets.displayCutout),
-        bottomBar = {
-            if (root && showNavigation) ToolBottomNavigation(screen, onNavigate)
-        }) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {
-                Box(width.fillMaxHeight()) {
-                    if (root || screen == Screen.FILES || screen == Screen.TASKS) pages.SaveableStateProvider(screen.name) { content() }
-                    else content()
+                }, contentWindowInsets = if (root && floatingNavigation)
+                    pageInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                    else pageInsets,
+                bottomBar = {
+                    if (root && showNavigation) ToolBottomNavigation(screen, onNavigate)
+                }) { padding ->
+                    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {
+                        Box(width.fillMaxHeight()) {
+                            if (root || screen == Screen.FILES || screen == Screen.TASKS) pages.SaveableStateProvider(screen.name) { content() }
+                            else content()
+                        }
+                    }
                 }
             }
         }
+    }
+    // 固定子页面的组合位置。
+    BoxWithConstraints(Modifier.fillMaxSize().then(if (tablet)
+        Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)) else Modifier)) {
+        val minimumWidth = if (screen == Screen.HOME) Theme.sizes.navigationBreakpoint else Theme.sizes.tabletBreakpoint
+        scaffold(root && tabletLandscape && maxWidth >= minimumWidth)
     }
 }
 

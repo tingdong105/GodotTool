@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +30,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,6 +79,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import com.winter.godot.tool.R
+import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.components.ToolIcon
@@ -99,6 +105,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
+import top.yukonga.miuix.kmp.nav.gesture.PredictiveBackHandler
 import top.yukonga.miuix.kmp.overlay.OverlayCascadingListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.ceil
@@ -115,19 +122,23 @@ import kotlin.math.ceil
  * @param onViewMode 切换方法、字段或关心范围。
  * @param onPublish 重试保存公开报告。
  * @param onBack 返回或关闭搜索。
+ * @param active 当前是否为可交互的导航页面。
  */
 @OptIn(ExperimentalScrollBarApi::class)
 @Composable
 fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, onSearchExpanded: (Boolean) -> Unit,
     onFilter: (ChangeKind?) -> Unit, onPlugins: (Boolean) -> Unit, onLoadMore: () -> Unit, onWrapLines: (Boolean) -> Unit,
-    onViewMode: (ComparisonMode) -> Unit, onPublish: () -> Unit, onBack: () -> Unit) {
+    onViewMode: (ComparisonMode) -> Unit, onPublish: () -> Unit, onBack: () -> Unit, active: Boolean = true) {
     var scale by rememberSaveable(state.viewingId) { mutableFloatStateOf(1f) }
     val list = rememberLazyListState()
     val focus = LocalFocusManager.current
     val context = LocalContext.current
     val selections = remember(state.viewingId) { ResultSelections() }
     val title = state.record?.let(ComparisonText::title) ?: stringResource(R.string.compare_result)
-    val contentWidth = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
+    val tablet = ToolDevice.isPad
+    val contentWidth = if (tablet) Modifier.fillMaxWidth() else Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
+    PredictiveBackHandler(enabled = active && state.searchExpanded, onProgress = { events -> events.collect {} },
+        onCommit = { focus.clearFocus(); onSearchExpanded(false) }, onCancel = {})
     LaunchedEffect(state.viewingId, state.query, state.filter, state.includePlugins, state.viewMode, state.focusOnly, state.rulesRevision) {
         selections.clear()
         list.scrollToItem(0)
@@ -143,7 +154,8 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
             onLoadMore()
         }
     }
-    Scaffold(modifier = Modifier.fillMaxSize().imePadding().dismissTextSelection(selections), topBar = {
+    Scaffold(modifier = Modifier.fillMaxSize().imePadding().dismissTextSelection(selections),
+        contentWindowInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout), topBar = {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
             SmallTopAppBar(title = title, modifier = contentWidth, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
                 navigationIcon = {

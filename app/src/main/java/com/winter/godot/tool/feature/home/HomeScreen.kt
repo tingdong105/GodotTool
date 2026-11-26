@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskLogLine
@@ -47,12 +50,14 @@ import com.winter.godot.tool.feature.compare.SnapshotStatus
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.feature.recovery.recoveryMode
 import com.winter.godot.tool.ui.LocalRootBottomInset
+import com.winter.godot.tool.ui.LocalWideContent
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.TaskLogs
 import com.winter.godot.tool.ui.components.TaskProgress
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.components.statusResource
+import com.winter.godot.tool.ui.rememberMovableToolContent
 import com.winter.godot.tool.ui.theme.Theme
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
@@ -71,7 +76,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 文件、配置与处理组成纵向三步工作流。
+ * 手机保留纵向三步工作流，平板独立适配分栏。
  * @param state 首页草稿及当前步骤。
  * @param settings 默认处理配置。
  * @param latest 当前或最近任务。
@@ -91,6 +96,9 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
     onStep: (Int) -> Unit, onChoose: () -> Unit, onFollow: (Boolean) -> Unit,
     onSelection: (RecoverySelection) -> Unit, onStart: () -> Unit, onNew: () -> Unit,
     onHistory: () -> Unit, onOpen: (String) -> Unit, logs: List<TaskLogLine> = emptyList(), onSnapshot: (Boolean) -> Unit = {}) {
+    val wide = LocalWideContent.current
+    // 单双栏共用步骤锚点。
+    val steps = rememberLazyListState()
     val step = if (busy) 3 else state.homeStep
     val selection = if (state.followsSettings) settings.selection else state.selection
     val running = latest?.status == TaskStatus.RUNNING
@@ -108,86 +116,99 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
     }
     val configurationMargin = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
         top = BasicComponentDefaults.InsideMargin.calculateTopPadding(), bottom = BasicComponentDefaults.InsideMargin.calculateBottomPadding())
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-            top = Theme.spacing.sm, bottom = Theme.spacing.sm + LocalRootBottomInset.current),
-        verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-        item(key = "file") {
-            HomeStep(1, stringResource(R.string.select_file), fileSummary, expanded = step == 1,
-                completed = step > 1, enabled = !busy, onClick = { onStep(1) }) {
-                if (name != null) {
-                    SelectedFile(name, onChoose)
-                    PrimaryButton(stringResource(R.string.next_step), { onStep(2) }, Modifier.fillMaxWidth())
-                } else {
-                    Text(stringResource(R.string.supported_packages), style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    PrimaryButton(stringResource(R.string.select_file), onChoose, Modifier.fillMaxWidth(), enabled = !busy, icon = MiuixIcons.Folder)
-                }
+    val fileStep: @Composable () -> Unit = {
+        HomeStep(1, stringResource(R.string.select_file), fileSummary, expanded = step == 1,
+            completed = step > 1, enabled = !busy, onClick = { onStep(1) }) {
+            if (name != null) {
+                SelectedFile(name, onChoose)
+                PrimaryButton(stringResource(R.string.next_step), { onStep(2) }, Modifier.fillMaxWidth())
+            } else {
+                Text(stringResource(R.string.supported_packages), style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                PrimaryButton(stringResource(R.string.select_file), onChoose, Modifier.fillMaxWidth(), enabled = !busy, icon = MiuixIcons.Folder)
             }
         }
-        item(key = "configuration") {
-            HomeStep(2, stringResource(R.string.choose_configuration), configSummary, expanded = step == 2,
-                completed = step > 2, enabled = !busy && name != null, onClick = { onStep(2) }) {
-                SwitchPreference(state.followsSettings, onFollow, stringResource(R.string.follow_settings),
-                    summary = if (state.followsSettings) stringResource(recoveryMode(settings.selection)) else null,
-                    insideMargin = configurationMargin)
-                AnimatedVisibility(!state.followsSettings, enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(),
-                    exit = shrinkVertically(spring(dampingRatio = 0.9f, stiffness = 450f)) + fadeOut()) {
-                    Column {
-                        RecoveryOptions(selection, onSelection, embedded = true, insideMargin = configurationMargin)
-                        SwitchPreference(state.generateSnapshot, onSnapshot, stringResource(R.string.generate_snapshot), insideMargin = configurationMargin)
-                    }
-                }
-                PrimaryButton(stringResource(R.string.next_step), { onStep(3) }, Modifier.fillMaxWidth(), enabled = selection.hasContent)
-            }
-        }
-        item(key = "processing") {
-            HomeStep(3, stringResource(R.string.start_processing), if (showingTask) stringResource(statusResource(latest))
-                else stringResource(if (step == 3) R.string.ready_to_process else R.string.waiting_configuration),
-                expanded = step == 3, completed = showingTask && !running && latest.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL),
-                enabled = false, onClick = {}) {
-                if (showingTask) {
-                    TaskProgress(latest)
-                    if (!running) {
-                        ResultSummary(latest)
-                        val ready = latest.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(stringResource(if (ready) R.string.view_files else R.string.history),
-                                { if (ready) onOpen(latest.id) else onHistory() }, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon))
-                            PrimaryButton(stringResource(R.string.got_it), onNew, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon), enabled = !busy, icon = MiuixIcons.Basic.Check)
-                        }
-                    }
-                } else {
-                    if (name != null) SelectedFile(name)
-                    val unpackContent = when (recoveryMode(selection)) {
-                        R.string.full_project_preset -> stringResource(R.string.unpack_full_files)
-                        R.string.scripts_only_preset -> stringResource(R.string.unpack_script_files)
-                        else -> if (selection.hasContent) stringResource(R.string.unpack_selected_files, listOfNotNull(
-                            if (selection.scripts) stringResource(R.string.project_scripts) else null,
-                            if (selection.scenes) stringResource(R.string.scene_resources) else null,
-                            if (selection.assets) stringResource(R.string.project_assets) else null,
-                            if (selection.config) stringResource(R.string.project_configuration) else null,
-                            if (selection.plugins) stringResource(R.string.project_plugins) else null,
-                        ).joinToString("、")) else null
-                    }
-                    val processingContent = listOfNotNull(
-                        unpackContent,
-                        if (selection.keepRaw) stringResource(R.string.keep_raw) else null,
-                        if (if (state.followsSettings) settings.snapshot.generate else state.generateSnapshot)
-                            stringResource(R.string.generate_snapshot) else null,
-                    )
-                    if (processingContent.isNotEmpty()) Text(stringResource(R.string.processing_contents, processingContent.joinToString(" + ")),
-                        style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    PrimaryButton(stringResource(R.string.start_processing), onStart, Modifier.fillMaxWidth(), enabled = !busy && name != null && selection.hasContent, icon = MiuixIcons.Play)
+    }
+    val configurationStep: @Composable () -> Unit = {
+        HomeStep(2, stringResource(R.string.choose_configuration), configSummary, expanded = step == 2,
+            completed = step > 2, enabled = !busy && name != null, onClick = { onStep(2) }) {
+            SwitchPreference(state.followsSettings, onFollow, stringResource(R.string.follow_settings),
+                summary = if (state.followsSettings) stringResource(recoveryMode(settings.selection)) else null,
+                insideMargin = configurationMargin)
+            AnimatedVisibility(!state.followsSettings, enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(),
+                exit = shrinkVertically(spring(dampingRatio = 0.9f, stiffness = 450f)) + fadeOut()) {
+                Column {
+                    RecoveryOptions(selection, onSelection, embedded = true, insideMargin = configurationMargin)
+                    SwitchPreference(state.generateSnapshot, onSnapshot, stringResource(R.string.generate_snapshot), insideMargin = configurationMargin)
                 }
             }
+            PrimaryButton(stringResource(R.string.next_step), { onStep(3) }, Modifier.fillMaxWidth(), enabled = selection.hasContent)
         }
-        if (showingTask) item(key = "logs") {
-            Card(Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.85f, stiffness = 450f)), cornerRadius = Theme.sizes.corner) {
-                Column(Modifier.padding(Theme.spacing.lg), verticalArrangement = Arrangement.spacedBy(Theme.spacing.lg)) {
+    }
+    val processingStep: @Composable () -> Unit = {
+        HomeStep(3, stringResource(R.string.start_processing), if (showingTask) stringResource(statusResource(latest))
+            else stringResource(if (step == 3) R.string.ready_to_process else R.string.waiting_configuration),
+            expanded = step == 3, completed = showingTask && !running && latest.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL),
+            enabled = false, onClick = {}) {
+            if (showingTask) {
+                TaskProgress(latest)
+                if (!running) {
+                    ResultSummary(latest)
+                    val ready = latest.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(stringResource(if (ready) R.string.view_files else R.string.history),
+                            { if (ready) onOpen(latest.id) else onHistory() }, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon))
+                        PrimaryButton(stringResource(R.string.got_it), onNew, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon), enabled = !busy, icon = MiuixIcons.Basic.Check)
+                    }
+                }
+            } else {
+                if (name != null) SelectedFile(name)
+                val unpackContent = when (recoveryMode(selection)) {
+                    R.string.full_project_preset -> stringResource(R.string.unpack_full_files)
+                    R.string.scripts_only_preset -> stringResource(R.string.unpack_script_files)
+                    else -> if (selection.hasContent) stringResource(R.string.unpack_selected_files, listOfNotNull(
+                        if (selection.scripts) stringResource(R.string.project_scripts) else null,
+                        if (selection.scenes) stringResource(R.string.scene_resources) else null,
+                        if (selection.assets) stringResource(R.string.project_assets) else null,
+                        if (selection.config) stringResource(R.string.project_configuration) else null,
+                        if (selection.plugins) stringResource(R.string.project_plugins) else null,
+                    ).joinToString("、")) else null
+                }
+                val processingContent = listOfNotNull(
+                    unpackContent,
+                    if (selection.keepRaw) stringResource(R.string.keep_raw) else null,
+                    if (if (state.followsSettings) settings.snapshot.generate else state.generateSnapshot)
+                        stringResource(R.string.generate_snapshot) else null,
+                )
+                if (processingContent.isNotEmpty()) Text(stringResource(R.string.processing_contents, processingContent.joinToString(" + ")),
+                    style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                PrimaryButton(stringResource(R.string.start_processing), onStart, Modifier.fillMaxWidth(), enabled = !busy && name != null && selection.hasContent, icon = MiuixIcons.Play)
+            }
+        }
+    }
+    val logCard = rememberMovableToolContent {
+        if (showingTask) {
+            Card(Modifier.fillMaxWidth().then(if (wide) Modifier.fillMaxHeight() else Modifier).animateContentSize(spring(dampingRatio = 0.85f, stiffness = 450f)), cornerRadius = Theme.sizes.corner) {
+                Column(Modifier.then(if (wide) Modifier.fillMaxHeight() else Modifier).padding(Theme.spacing.lg), verticalArrangement = Arrangement.spacedBy(Theme.spacing.lg)) {
                     Text(stringResource(R.string.processing_logs), style = Theme.typography.title)
-                    TaskLogs(latest, logs)
+                    if (wide) TaskLogs(latest, logs, Modifier.weight(1f), fillHeight = true)
+                    else TaskLogs(latest, logs)
                 }
             }
         }
+    }
+    val padding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+        top = Theme.spacing.sm, bottom = Theme.spacing.sm + LocalRootBottomInset.current)
+    Row(Modifier.fillMaxSize().then(if (wide) Modifier.padding(padding) else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
+        LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = steps,
+            contentPadding = if (wide) PaddingValues(0.dp) else padding,
+            verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
+            item(key = "file") { fileStep() }
+            item(key = "configuration") { configurationStep() }
+            item(key = "processing") { processingStep() }
+            if (!wide && showingTask) item(key = "logs") { logCard() }
+        }
+        if (wide) Box(Modifier.weight(1f).fillMaxHeight()) { logCard() }
     }
 }
 
