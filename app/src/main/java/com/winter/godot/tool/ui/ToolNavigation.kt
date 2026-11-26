@@ -13,7 +13,7 @@ import top.yukonga.miuix.kmp.nav.core.navBackStackOf
  * @author Tingdong
  * @date 2026-11-24
  */
-enum class Screen : NavKey { HOME, TASKS, COMPARE, COMPARE_RESULT, SETTINGS, FILES, WORKSPACE, ABOUT, LICENSES, COMPARISON_RULES, COMPARISON_FOCUS_RULES }
+enum class Screen : NavKey { HOME, TASKS, COMPARE, COMPARE_RESULT, SETTINGS, FILES, ABOUT, LICENSES, COMPARISON_RULES, COMPARISON_FOCUS_RULES }
 
 /**
  * 判断是否为一级导航页面。
@@ -78,7 +78,7 @@ class ToolNavigation(private val saved: SavedStateHandle) {
     }
 
     /**
-     * 恢复已保存条目，并兼容旧版本的工作区来源。
+     * 恢复已保存条目，旧工作区返回来源页面。
      * @return 校验后的返回栈。
      */
     private fun restore(): List<Screen> {
@@ -87,10 +87,11 @@ class ToolNavigation(private val saved: SavedStateHandle) {
             val restored = stored.mapNotNull { name -> when (name) {
                 "RECOVERY" -> Screen.FILES
                 "DEFAULTS" -> Screen.SETTINGS
+                "WORKSPACE" -> null
                 else -> Screen.entries.firstOrNull { it.name == name }
             } }
             val screens = restored.distinct()
-            if (restored.size == stored.size && screens.size in 1..Screen.entries.size &&
+            if (restored.size == stored.count { it != "WORKSPACE" } && screens.size in 1..Screen.entries.size &&
                 screens.first().isRoot() && screens.drop(1).none { it.isRoot() }) return screens
         }
         return when (saved.get<String>("screen")) {
@@ -103,8 +104,8 @@ class ToolNavigation(private val saved: SavedStateHandle) {
             Screen.LICENSES.name -> listOf(Screen.SETTINGS, Screen.ABOUT, Screen.LICENSES)
             Screen.FILES.name, "RECOVERY" -> listOf(Screen.HOME, Screen.FILES)
             Screen.TASKS.name -> listOf(Screen.HOME, Screen.TASKS)
-            Screen.WORKSPACE.name -> if (saved.get<String>("workspaceOrigin") == Screen.TASKS.name)
-                listOf(Screen.HOME, Screen.TASKS, Screen.WORKSPACE) else listOf(Screen.HOME, Screen.WORKSPACE)
+            "WORKSPACE" -> if (saved.get<String>("workspaceOrigin") == Screen.TASKS.name)
+                listOf(Screen.HOME, Screen.TASKS) else listOf(Screen.HOME)
             else -> listOf(Screen.HOME)
         }
     }

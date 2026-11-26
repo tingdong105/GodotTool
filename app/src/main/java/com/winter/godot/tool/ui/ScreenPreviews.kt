@@ -13,7 +13,6 @@ import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
-import com.winter.godot.tool.data.WorkspaceEntry
 import com.winter.godot.tool.feature.backup.BackupDialogs
 import com.winter.godot.tool.feature.backup.BackupScope
 import com.winter.godot.tool.feature.backup.BackupScopeDialog
@@ -50,7 +49,6 @@ import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksClearButton
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
-import com.winter.godot.tool.feature.workspace.WorkspaceScreen
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.theme.GodotToolTheme
 
@@ -378,30 +376,6 @@ private fun FilesPreview() {
             })
         }) { FilePickerScreen(state, true, {}, { state = state.copy(chosenFiles = setOf(it)) }, {}) }
     }
-}
-
-/**
- * 工作区的四种设备与主题预览。
- */
-@ScreenPreviews
-@Composable
-private fun WorkspacePreview() {
-    val entries = listOf(WorkspaceEntry("original/scripts/Exporter.gdc", 16384), WorkspaceEntry("unpacked/scripts/Exporter.gd", 32768, "scripts/Exporter.gdc"),
-        WorkspaceEntry("original/project.binary", 4096), WorkspaceEntry("unpacked/project.godot", 2048), WorkspaceEntry("report.md", 1024))
-    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "示例项目 1.0.2") { WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries,
-        previewPath = "unpacked/scripts/Exporter.gd", previewText = "extends Node\n\nfunc export_video():\n\tvar encoder = VideoEncoder.new()\n\tencoder.encode_at(frame)"), {}) } }
-}
-
-/**
- * 仅有字节码时的报告入口与四种设备预览。
- */
-@ScreenPreviews
-@Composable
-private fun UnrecoveredWorkspacePreview() {
-    val entries = listOf(WorkspaceEntry("original/scripts/Main.gdc", 16384), WorkspaceEntry("report.md", 2048))
-    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "示例项目") {
-        WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries), {})
-    } }
 }
 
 /**

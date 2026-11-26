@@ -78,7 +78,6 @@ import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksClearButton
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
-import com.winter.godot.tool.feature.workspace.WorkspaceScreen
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.components.ToolIcon
@@ -219,7 +218,6 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                     backupUi.running || backupUi.choosing || backupUi.confirming || backupUi.inspecting) { screen, pageUi ->
                 val ruleGroup = screen.comparisonRuleGroup()
                 val ruleList = ruleGroup?.let(comparisonUi::ruleList)
-                val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
                 val page: @Composable (Screen) -> Unit = { destination ->
                     when (destination) {
                         Screen.HOME -> HomeScreen(pageUi, settings, latestTask, active != null,
@@ -279,10 +277,9 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         }
                         Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
                             { model.confirmFiles(onSnapshot = { old, path -> comparison.select(old, path) }, onBackup = backup::inspect) }, model::refreshFiles)
-                        Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                     }
-                    BackHandler(enabled = screen == ui.screen && (ui.previewPath != null || screen == Screen.FILES &&
-                        ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath), onBack = model::back)
+                    BackHandler(enabled = screen == ui.screen && screen == Screen.FILES &&
+                        ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath, onBack = model::back)
                     BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
                         ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
                     // 在设置页的弹窗宿主内注册。
@@ -313,7 +310,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                 }
                 if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, settings.floatingBottomBar, settings.liquidGlass, page)
                 else if (screen == Screen.COMPARE_RESULT || screen == Screen.ABOUT) page(screen)
-                else ToolScaffold(screen, workspaceTitle, model::navigate, { dispatcher?.onBackPressed() ?: back() },
+                else ToolScaffold(screen, model::navigate, { dispatcher?.onBackPressed() ?: back() },
                     titleOverride = when {
                         screen == Screen.TASKS && ui.selectedTasks.isNotEmpty() -> stringResource(R.string.tasks_selected, ui.selectedTasks.size)
                         ruleList != null && ruleList.selectedIds.isNotEmpty() -> stringResource(R.string.tasks_selected, ruleList.selectedIds.size)
@@ -374,7 +371,6 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, in
 /**
  * 一级页面使用可折叠大标题，子页面使用紧凑顶栏。
  * @param screen 当前页面。
- * @param workspaceName 工程或预览文件名。
  * @param onBack 与系统返回共用导航栈。
  * @param showNavigation 一级分页内部由外层提供固定导航栏。
  * @param actions 二级页面顶栏操作。
@@ -382,7 +378,7 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, in
  * @param floatingNavigation 是否将底部避让交由一级列表处理。
  */
 @Composable
-fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
+fun ToolScaffold(screen: Screen, onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
     titleOverride: String? = null, actions: @Composable () -> Unit = {}, floatingNavigation: Boolean = false, content: @Composable () -> Unit) {
     val root = screen.isRoot()
     val title = titleOverride ?: when (screen) {
@@ -396,7 +392,6 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
         Screen.LICENSES -> stringResource(R.string.licenses)
         Screen.TASKS -> stringResource(R.string.history)
         Screen.FILES -> stringResource(R.string.select_file)
-        Screen.WORKSPACE -> workspaceName.ifEmpty { stringResource(R.string.workspace) }
     }
     val pages = rememberSaveableStateHolder()
     val tablet = ToolDevice.isPad
@@ -407,7 +402,6 @@ fun ToolScaffold(screen: Screen, workspaceName: String = "", onNavigate: (Screen
             key(screen) {
                 val scroll = MiuixScrollBehavior(rememberTopAppBarState())
                 val width = when {
-                    screen == Screen.WORKSPACE -> Modifier.fillMaxWidth()
                     wide -> Modifier.widthIn(max = Theme.sizes.wideContentMax).fillMaxWidth()
                     else -> Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
                 }

@@ -6,13 +6,12 @@ import com.winter.godot.core.model.CoreFailure
 import com.winter.godot.tool.feature.compare.SnapshotReasonText
 import com.winter.godot.tool.feature.files.StorageAccess
 import com.winter.godot.tool.task.EngineExitDiagnostics
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.zip.ZipFile
 
 /**
- * 管理工作区文件、索引和导出边界。
+ * 管理私有工作区、结果恢复和清理边界。
  * @author Tingdong
  * @date 2026-11-21
  */
@@ -110,83 +109,16 @@ class WorkspaceStore(private val context: Context) {
         writeJson(id, "engine-result.json", event.toString())
         val archive = summary.optString("outputPath").takeIf { it.endsWith(".zip") }?.let(::File)
         if (archive != null) runCatching { PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(context, it) }).publish(output, since, {}, {}, archive) }
-        File(directory(id), "workspace.json").delete()
         return event
     }
 
     /**
-     * 索引原始与可读产物，保留对应的源文件路径。
+     * 解析私有工作区文件，拒绝不存在或越界的路径。
      * @param id 工作区标识。
-     * @return 文件列表。
-     */
-    @Synchronized
-    fun index(id: String): List<WorkspaceEntry> {
-        val directory = readableDirectory(id)
-        val raw = ProjectAssembler.reportFile(directory, "raw-index.json")
-        val sources = mutableSetOf<String>()
-        if (raw.isFile && raw.length() <= 128L * 1024 * 1024) {
-            val array = JSONArray(raw.readText())
-            for (i in 0 until array.length()) sources += SafeFiles.relative(array.getJSONObject(i).getString("path"))
-        }
-        val entries = mutableListOf<WorkspaceEntry>()
-        for (base in listOf(
-            ProjectAssembler.contentDirectory(directory, "unpacked", "project", "recovered"),
-            ProjectAssembler.contentDirectory(directory, "original", "raw"),
-        )) {
-            if (!base.exists()) continue
-            val folder = base.name
-            base.walkTopDown().onEnter { it.canonicalFile.toPath().startsWith(directory.canonicalFile.toPath()) }.filter { it.isFile }.forEach { file ->
-                if (entries.size >= 200000) throw CoreFailure("ENTRY_LIMIT", "Workspace entry count exceeds 200000")
-                val relative = SafeFiles.relative(file.relativeTo(base).invariantSeparatorsPath)
-                val source = when {
-                    relative in sources -> relative
-                    relative.endsWith(".gd") && relative.dropLast(3) + ".gdc" in sources -> relative.dropLast(3) + ".gdc"
-                    relative.endsWith(".gd") && relative.dropLast(3) + ".gde" in sources -> relative.dropLast(3) + ".gde"
-                    relative.endsWith(".tscn") && relative.dropLast(5) + ".scn" in sources -> relative.dropLast(5) + ".scn"
-                    relative.endsWith(".tres") && relative.dropLast(5) + ".res" in sources -> relative.dropLast(5) + ".res"
-                    else -> ""
-                }
-                entries += WorkspaceEntry("$folder/$relative", file.length(), source)
-            }
-        }
-        val report = File(directory, RecoveryReport.FILE_NAME).takeIf { it.isFile }
-            ?: File(directory, "report.txt").takeIf { it.isFile }
-            ?: ProjectAssembler.reportFile(directory, "recovery-report.txt").takeIf { it.isFile }
-            ?: ProjectAssembler.reportFile(directory, "result.json").takeIf { it.isFile }
-        if (report != null) entries += WorkspaceEntry(report.relativeTo(directory).invariantSeparatorsPath, report.length())
-        File(directory, "diff.gt").takeIf { it.isFile }?.let { entries += WorkspaceEntry(it.name, it.length()) }
-        val sorted = entries.sortedBy { it.path }
-        val json = JSONArray()
-        sorted.forEach { json.put(JSONObject().put("path", it.path).put("size", it.size).put("source", it.source)) }
-        writeJson(id, "workspace.json", json.toString())
-        return sorted
-    }
-
-    /**
-     * 读取已生成的工作区索引。
-     * @param id 工作区标识。
-     * @return 校验后的文件列表。
-     */
-    @Synchronized
-    fun entries(id: String): List<WorkspaceEntry> {
-        val file = File(directory(id), "workspace.json")
-        if (!file.isFile) return index(id)
-        if (file.length() > 128L * 1024 * 1024) throw CoreFailure("ENTRY_LIMIT", "Workspace index exceeds 128 MiB")
-        val array = JSONArray(file.readText())
-        if (array.length() > 200000) throw CoreFailure("ENTRY_LIMIT", "Workspace entry count exceeds 200000")
-        return List(array.length()) { i ->
-            val entry = array.getJSONObject(i)
-            WorkspaceEntry(SafeFiles.relative(entry.getString("path")), entry.getLong("size"), entry.optString("source"))
-        }
-    }
-
-    /**
-     * 解析索引内文件，拒绝不存在或越界的路径。
-     * @param id 工作区标识。
-     * @param path 索引相对路径。
+     * @param path 工作区相对路径。
      * @return 可读取的文件。
      */
-    fun file(id: String, path: String): File = SafeFiles.resolve(if (path.startsWith("input/") || path == "inputs.json") directory(id) else readableDirectory(id), path).also {
+    fun file(id: String, path: String): File = SafeFiles.resolve(directory(id), path).also {
         if (!it.isFile) throw CoreFailure("MISSING_ENTRY", path)
     }
 

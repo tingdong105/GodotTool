@@ -20,16 +20,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +40,6 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -101,21 +96,6 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
         if (icon != null) Icon(icon, null, Modifier.padding(end = Theme.spacing.sm).size(Theme.spacing.lg))
         Text(text, style = MiuixTheme.textStyles.button)
     }
-}
-
-/**
- * 文件列表中的 miuix 搜索输入框。
- * @param query 当前查询。
- * @param label 搜索范围提示。
- * @param onChange 更新过滤条件。
- */
-@Composable
-fun FileSearch(query: String, label: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    val focus = LocalFocusManager.current
-    var focused by remember { mutableStateOf(false) }
-    InputField(query = query, onQueryChange = onChange, label = label, expanded = focused,
-        onExpandedChange = { focused = it }, onSearch = { focus.clearFocus() },
-        modifier = modifier.onFocusChanged { focused = it.isFocused })
 }
 
 /**

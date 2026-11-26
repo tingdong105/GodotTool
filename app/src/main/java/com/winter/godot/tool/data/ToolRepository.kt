@@ -286,20 +286,12 @@ class ToolRepository(private val context: Context) {
             "result" -> {
                 val summary = event.optJSONObject("summary") ?: JSONObject()
                 val partial = summary.has("warning") || summary.optInt("failedScripts") > 0 || summary.optInt("failedConversions") > 0
-                // 先保存完成事件，索引可在下次打开工作区时重建。
                 replace(current.copy(status = if (partial) TaskStatus.PARTIAL else TaskStatus.SUCCEEDED, stage = "done", summary = summary.toString(), path = "", overallProgress = 1f,
                     elapsedMillis = completedDuration(current, event),
                     selection = current.selection ?: summary.optJSONObject("selection")?.let(::recoverySelectionFromJson)))
                 appendLog(TaskLogLine("done", context.getString(if (partial) R.string.log_partial else R.string.log_complete),
                     if (partial) TaskLogLevel.WARNING else TaskLogLevel.SUCCESS))
                 persistTasks()
-                if (current.operation == "recover") scope.launch {
-                    runCatching { withContext(Dispatchers.IO) { workspaces.index(id) } }.onFailure { error ->
-                        val completed = tasks.value.firstOrNull { it.id == id } ?: return@onFailure
-                        replace(completed.copy(status = TaskStatus.PARTIAL, errorCode = "INDEX_FAILED", errorDetail = error.message.orEmpty()))
-                        persistTasks()
-                    }
-                }
             }
             "error" -> {
                 val code = event.optString("code", "IO_FAILED")

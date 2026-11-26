@@ -135,21 +135,6 @@ data class TaskRecord(
 }
 
 /**
- * 可浏览的工作区文件。
- * @author Tingdong
- * @date 2026-11-21
- */
-data class WorkspaceEntry(val path: String, val size: Long, val source: String = "") {
-    val extension: String get() = path.substringAfterLast('.', "").lowercase()
-    val category: String get() = when (extension) {
-        "gd", "gdc", "gde" -> "scripts"
-        "tscn", "scn", "tres", "res", "godot", "binary" -> "scenes"
-        "png", "jpg", "jpeg", "webp", "bmp" -> "images"
-        else -> "other"
-    }
-}
-
-/**
  * 恢复输入与选项，仅在请求期间携带密钥。
  * @author Tingdong
  * @date 2026-11-21

@@ -1,8 +1,6 @@
 package com.winter.godot.tool.ui
 
 import android.app.Application
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -14,7 +12,6 @@ import com.winter.godot.tool.data.ImportDraft
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
-import com.winter.godot.tool.data.WorkspaceEntry
 import com.winter.godot.tool.feature.backup.BackupAccess
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.files.BrowserFile
@@ -30,14 +27,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.CharBuffer
-import java.nio.charset.CodingErrorAction
 
 /**
- * 文件预览与临时交互状态。
+ * 文件选择与临时交互状态。
  * @author Tingdong
  * @date 2026-11-21
  */
@@ -57,14 +50,6 @@ data class ToolUiState(
     val pickerPurpose: String = "recovery",
     val homeStep: Int = 1,
     val loading: Boolean = false,
-    val workspaceId: String? = null,
-    val entries: List<WorkspaceEntry> = emptyList(),
-    val previewPath: String? = null,
-    val previewText: String = "",
-    val previewImage: Bitmap? = null,
-    val previewLoading: Boolean = false,
-    val truncated: Boolean = false,
-    val binary: Boolean = false,
     val selectedTasks: Set<String> = emptySet(),
     val deletingTasks: Boolean = false,
     @param:StringRes val notice: Int? = null,
@@ -72,7 +57,7 @@ data class ToolUiState(
 )
 
 /**
- * 工作台、导入与预览的界面状态模型。
+ * 工作台、导入与文件选择的界面状态模型。
  * @author Tingdong
  * @date 2026-11-21
  */
@@ -101,7 +86,6 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         homeStep = restoreHomeStep(saved.get<Int>("homeStep") ?: 1, saved.get<ArrayList<String>>("inputFiles").orEmpty().isNotEmpty(),
             active.value != null, tasks.value.firstOrNull())))
     val ui = mutableUi.asStateFlow()
-    private var previewJob: Job? = null
     private var fileJob: Job? = null
 
     init {
@@ -116,10 +100,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
             saved["inputFiles"] = arrayListOf<String>()
             saved["chosenFiles"] = arrayListOf<String>()
         }
-        val id = saved.get<String>("workspaceId")
-        if (backStack.value.last() == Screen.WORKSPACE) {
-            if (id != null) openWorkspace(id) else navigate(Screen.HOME)
-        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { pickerStartPath() }, restoring = true)
+        if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { pickerStartPath() }, restoring = true)
     }
 
     /**
@@ -137,26 +118,21 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     private fun showScreen(screen: Screen) {
         if (screen != Screen.FILES) fileJob?.cancel()
         if (screen != Screen.FILES && ui.value.browserDirectoryOnly) resetDirectorySort()
-        if (screen != Screen.WORKSPACE) { saved["workspaceId"] = null; previewJob?.cancel() }
-        mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) { if (it.pickerPurpose == "recovery") it.inputFiles else emptySet() } else it.chosenFiles, previewPath = null, previewText = "", previewImage = null, notice = null,
+        mutableUi.update { it.copy(screen = screen, chosenFiles = if (screen == Screen.FILES) { if (it.pickerPurpose == "recovery") it.inputFiles else emptySet() } else it.chosenFiles, notice = null,
             selectedTasks = if (screen == Screen.TASKS) it.selectedTasks else emptySet(),
-            workspaceId = if (screen == Screen.WORKSPACE) it.workspaceId else null,
             browserPath = if (screen == Screen.FILES) "" else it.browserPath,
             browserFiles = if (screen == Screen.FILES) emptyList() else it.browserFiles,
-            entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false, browserRefreshing = false) }
+            loading = false, browserRefreshing = false) }
         saved.saveRecoverySelection(ui.value.selection)
         if (screen == Screen.FILES) readBrowser(pickerStartPath(), restoring = true)
     }
 
     /**
-     * 处理预览、工作区与顶层页面的返回。
+     * 处理记录多选、文件选择与顶层页面的返回。
      */
     fun back() {
         if (ui.value.screen == Screen.TASKS && ui.value.selectedTasks.isNotEmpty()) {
             clearTaskSelection()
-        } else if (ui.value.previewPath != null) {
-            previewJob?.cancel()
-            mutableUi.update { it.copy(previewPath = null, previewImage = null, previewText = "") }
         } else if (ui.value.screen == Screen.FILES && ui.value.browserPath.isNotEmpty() && ui.value.browserPath != StorageAccess.root().absolutePath) {
             browseFiles(File(ui.value.browserPath).parent ?: StorageAccess.root().absolutePath)
         } else if (navigation.back()) showScreen(backStack.value.last())
@@ -401,84 +377,6 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     }
 
     /**
-     * 读取可用的工作区文件索引。
-     * @param id 历史任务标识。
-     */
-    fun openWorkspace(id: String) {
-        previewJob?.cancel()
-        navigation.navigate(Screen.WORKSPACE)
-        saved["workspaceId"] = id
-        saved["screen"] = Screen.WORKSPACE.name
-        mutableUi.update { it.copy(screen = Screen.WORKSPACE, workspaceId = id, entries = emptyList(), previewPath = null, previewImage = null, loading = true) }
-        viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) {
-                val task = tasks.value.firstOrNull { it.id == id }
-                if (task != null && task.status != TaskStatus.RUNNING && active.value != id) repository.workspaces.reconcileInterrupted(id, task.createdAt)
-                repository.workspaces.index(id)
-            } }
-                .onSuccess { entries -> if (ui.value.workspaceId == id) mutableUi.update { it.copy(entries = entries, loading = false) } }
-                .onFailure { error -> if (ui.value.workspaceId == id) {
-                    mutableUi.update { it.copy(loading = false) }
-                    showError(R.string.error_workspace, error.message.orEmpty())
-                } }
-        }
-    }
-
-    /**
-     * 加载大小受限的文本、图片或十六进制预览。
-     * @param entry 索引内文件。
-     */
-    fun preview(entry: WorkspaceEntry) {
-        val id = ui.value.workspaceId ?: return
-        if (entry.extension in setOf("gdc", "gde")) {
-            val relative = entry.path.removePrefix("original/").removePrefix("unpacked/").removePrefix("raw/")
-                .removePrefix("project/").removePrefix("recovered/").substringBeforeLast('.') + ".gd"
-            ui.value.entries.firstOrNull { it.path in listOf("unpacked/$relative", "project/$relative", "recovered/$relative") }?.let { preview(it); return }
-        }
-        previewJob?.cancel()
-        mutableUi.update { it.copy(previewPath = entry.path, previewLoading = true, previewText = "", previewImage = null, truncated = false, binary = false) }
-        previewJob = viewModelScope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val file = repository.workspaces.file(id, entry.path)
-                    if (entry.category == "images") {
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeFile(file.absolutePath, bounds)
-                        var sample = 1
-                        while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
-                        val image = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
-                        if (image != null) return@withContext PreviewData(image = image)
-                    }
-                    val data = file.inputStream().use { input ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(16384)
-                        var remaining = 2 * 1024 * 1024
-                        while (remaining > 0) {
-                            val count = input.read(buffer, 0, minOf(remaining, buffer.size))
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                            remaining -= count
-                        }
-                        output.toByteArray()
-                    }
-                    val truncated = file.length() > data.size
-                    val text = runCatching {
-                        val decoder = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                        val characters = CharBuffer.allocate(data.size)
-                        val result = decoder.decode(ByteBuffer.wrap(data), characters, !truncated)
-                        if (result.isError) result.throwException()
-                        if (!truncated) decoder.flush(characters)
-                        characters.flip().toString()
-                    }.getOrNull()
-                    if (text != null && '\u0000' !in text) PreviewData(text = text, truncated = truncated)
-                    else PreviewData(text = data.take(512).chunked(16).mapIndexed { index, row -> "%08x  ".format(index * 16) + row.joinToString(" ") { "%02x".format(it.toInt() and 255) } }.joinToString("\n"), binary = true, truncated = file.length() > 512)
-                }
-            }.onSuccess { preview -> mutableUi.update { it.copy(previewLoading = false, previewText = preview.text, previewImage = preview.image, truncated = preview.truncated, binary = preview.binary) } }
-                .onFailure { if (it !is kotlinx.coroutines.CancellationException) { mutableUi.update { state -> state.copy(previewLoading = false) }; showError(R.string.error_preview, it.message.orEmpty()) } }
-        }
-    }
-
-    /**
      * 使用缓存的输入重新处理，无需重新挑选文件。
      * @param task 原任务摘要。
      */
@@ -582,13 +480,6 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      */
     private fun showError(@StringRes message: Int, detail: String = "") { mutableUi.update { it.copy(notice = message, noticeDetail = detail.take(3000)) } }
 }
-
-/**
- * IO 线程生成的轻量文件预览。
- * @author Tingdong
- * @date 2026-11-21
- */
-private data class PreviewData(val text: String = "", val image: Bitmap? = null, val truncated: Boolean = false, val binary: Boolean = false)
 
 /**
  * 从系统保存状态恢复本次恢复范围。
