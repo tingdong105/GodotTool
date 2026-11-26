@@ -274,8 +274,8 @@ class ToolRepository(private val context: Context) {
                     overallProgress = maxOf(current.overallProgress, event.optDouble("overallProgress", current.overallProgress.toDouble()).toFloat()).coerceIn(0f, 0.99f)))
                 if (System.currentTimeMillis() - persistedAt > 1500) persistTasks()
             }
-            "mode" -> if (event.optString("mode") == "CNM") {
-                val line = TaskLogLine("mode", context.getString(R.string.cnm_detected), TaskLogLevel.ACCENT)
+            "mode" -> if (event.optString("mode") == "compatibility") {
+                val line = TaskLogLine("mode", context.getString(R.string.compatibility_detected))
                 if (line !in mutableLogs.value) appendLog(line)
             }
             "result" -> {

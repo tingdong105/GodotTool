@@ -238,19 +238,19 @@ fun stageResource(stage: String): Int = when (stage) {
 
 /**
  * 将诊断代码映射为可操作的中文错误。
- * @param code 核心诊断代码。
+ * @param code 核心诊断代码，兼容旧任务的历史前缀。
  * @return 本地化错误资源。
  */
 @StringRes
-fun errorResource(code: String): Int = when (code) {
+fun errorResource(code: String): Int = when (if (code.startsWith("NM_")) "ENCRYPTED_PACK_${code.substring(3)}" else code) {
     "SINGLE_INPUT_REQUIRED" -> R.string.single_file_only
     "BAD_KEY" -> R.string.error_bad_key
     "EMPTY_SELECTION" -> R.string.choose_recovery_content
     "NO_MATCHING_CONTENT" -> R.string.no_matching_content
-    "OPEN_FAILED", "MISSING_ENTRY", "TRUNCATED", "NM_BAD_INDEX", "NM_BAD_CIPHER" -> R.string.error_open
+    "OPEN_FAILED", "MISSING_ENTRY", "TRUNCATED", "ENCRYPTED_PACK_BAD_INDEX", "ENCRYPTED_PACK_BAD_CIPHER" -> R.string.error_open
     "CHECKSUM" -> R.string.error_checksum
     "NO_SPACE" -> R.string.error_space
-    "NM_BUILD_UNSUPPORTED", "NM_BAD_ENGINE", "NM_KEY_NOT_FOUND" -> R.string.error_nm_build
+    "ENCRYPTED_PACK_BUILD_UNSUPPORTED", "ENCRYPTED_PACK_BAD_ENGINE", "ENCRYPTED_PACK_KEY_NOT_FOUND" -> R.string.error_encrypted_pack
     "STORAGE_PERMISSION" -> R.string.storage_permission_detail
     "UNSAFE_PATH", "DUPLICATE_PATH", "SPLIT_CONFLICT" -> R.string.error_unsafe_path
     "ENGINE_INIT", "ENGINE_EXIT", "ENGINE_STOPPED", "CORE_MISSING", "ENGINE_START_TIMEOUT" -> R.string.error_engine

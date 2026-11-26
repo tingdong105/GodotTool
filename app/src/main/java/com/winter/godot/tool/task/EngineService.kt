@@ -31,9 +31,9 @@ import com.winter.godot.tool.R
 import com.winter.godot.tool.data.ProjectAssembler
 import com.winter.godot.tool.data.PublicOutputs
 import com.winter.godot.tool.data.WorkspaceStore
-import com.winter.godot.tool.feature.CNM.NodeMotionAdapter
 import com.winter.godot.tool.feature.compare.SnapshotGenerator
 import com.winter.godot.tool.feature.compare.SnapshotReasonText
+import com.winter.godot.tool.feature.compatibility.EncryptedPackAdapter
 import com.winter.godot.tool.feature.files.StorageAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -152,20 +152,17 @@ class EngineService : Service() {
         val workDirectory = directory
         val inputs = stageInputs(request, directory)
         checkCanceled()
-        var nm = false
-        var nmResources = 0
+        var compatibilityMode = false
+        var compatibleResources = 0
         if (inputs.all { it.extension.lowercase() in setOf("apk", "zip") }) {
             progress(CoreProgress("probe"))
             ArchiveSet(inputs).use { archives ->
-                val packageName = inputs.asSequence().filter { it.extension == "apk" }
-                    .mapNotNull { packageManager.getPackageArchiveInfo(it.absolutePath, 0)?.packageName }
-                    .firstOrNull { it == NodeMotionAdapter.PACKAGE_NAME }
-                nm = NodeMotionAdapter.probe(archives, ::checkCanceled, packageName)
-                if (nm) {
-                    emit(JSONObject().put("type", "mode").put("mode", "CNM"))
-                    val entries = NodeMotionAdapter.extract(archives, File(directory, "raw"), ::checkCanceled, ::progress,
+                compatibilityMode = EncryptedPackAdapter.probe(archives, ::checkCanceled)
+                if (compatibilityMode) {
+                    emit(JSONObject().put("type", "mode").put("mode", "compatibility"))
+                    val entries = EncryptedPackAdapter.extract(archives, File(directory, "raw"), ::checkCanceled, ::progress,
                         { path -> selection.needsForRecovery(path) || request.optBoolean("snapshot") && SnapshotGenerator.needs(path) }, ensureVersionProbe = true)
-                    nmResources = entries.size
+                    compatibleResources = entries.size
                     val index = JSONArray()
                     entries.forEach { index.put(JSONObject().put("path", it.path).put("size", it.size).put("md5", it.md5).put("encrypted", it.encrypted)) }
                     store.writeJson(taskId, "raw-index.json", index.toString())
@@ -173,7 +170,7 @@ class EngineService : Service() {
                     val outputs = PublicOutputs(StorageAccess.outputRoot(), { SnapshotReasonText.describe(this@EngineService, it) })
                     outputArchive = outputs.allocate(System.currentTimeMillis())
                     val pending = JSONObject().put("type", "result").put("id", taskId).put("summary", JSONObject()
-                        .put("resources", nmResources).put("scripts", 0).put("adapter", "CNM")
+                        .put("resources", compatibleResources).put("scripts", 0).put("adapter", "Super")
                         .put("warning", "RECOVERY_INTERRUPTED").put("diagnostic", "Native recovery interrupted; decrypted resources are saved")
                         .put("enginePid", Process.myPid()).put("recoveryStartedAt", System.currentTimeMillis())
                         .put("selection", selectionJson).put("layoutVersion", 4)
@@ -183,15 +180,15 @@ class EngineService : Service() {
                         if (terminal.get()) throw CancellationException("Task ended")
                         store.writeJson(taskId, "engine-result.json", pending.toString())
                         File(workDirectory, "result.json").writeText(pending.getJSONObject("summary").toString(2))
-                        File(workDirectory, "recovery-report.txt").writeText("CNM: resources decrypted and MD5 verified. Script recovery is pending.\n")
+                        File(workDirectory, "recovery-report.txt").writeText("Super mode: resources decrypted and MD5 verified. Script recovery is pending.\n")
                     }
                     outputs.publish(directory, System.currentTimeMillis(), ::checkCanceled, { value -> progress(value.copy(stage = "checkpoint")) }, outputArchive,
                         checkpoint = true)
                 }
             }
         }
-        val paths = if (nm) listOf(File(workDirectory, "raw").absolutePath) else inputs.map { it.absolutePath }
-        val job = JSONObject().put("paths", JSONArray(paths)).put("output", workDirectory.absolutePath).put("rawReady", nm)
+        val paths = if (compatibilityMode) listOf(File(workDirectory, "raw").absolutePath) else inputs.map { it.absolutePath }
+        val job = JSONObject().put("paths", JSONArray(paths)).put("output", workDirectory.absolutePath).put("rawReady", compatibilityMode)
             .put("scripts", request.optBoolean("scripts", true)).put("scenes", request.optBoolean("scenes", true)).put("key", request.optString("key"))
             .put("availableBytes", workDirectory.usableSpace)
             .put("selection", selectionJson)
@@ -202,10 +199,10 @@ class EngineService : Service() {
                 val event = JSONObject(payload)
                 if (event.optString("type") in setOf("result", "error")) {
                     if (event.optString("type") == "result") {
-                        if (nm) event.getJSONObject("summary").put("adapter", "CNM")
+                        if (compatibilityMode) event.getJSONObject("summary").put("adapter", "Super")
                         saveRecovery(event, workDirectory)
-                    } else if (nmResources > 0 && !canceled.get()) {
-                        val summary = JSONObject().put("resources", nmResources).put("scripts", 0).put("adapter", "CNM")
+                    } else if (compatibleResources > 0 && !canceled.get()) {
+                        val summary = JSONObject().put("resources", compatibleResources).put("scripts", 0).put("adapter", "Super")
                             .put("warning", "SCRIPT_RECOVERY_FAILED").put("errorCode", event.optString("code")).put("diagnostic", event.optString("detail").take(20000))
                         File(workDirectory, "recovery-report.txt").writeText(event.optString("code") + "\n" + event.optString("detail"))
                         saveRecovery(JSONObject().put("type", "result").put("summary", summary), workDirectory)

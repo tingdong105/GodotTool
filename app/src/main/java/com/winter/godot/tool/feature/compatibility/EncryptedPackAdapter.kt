@@ -1,4 +1,4 @@
-package com.winter.godot.tool.feature.CNM
+package com.winter.godot.tool.feature.compatibility
 
 import com.winter.godot.core.io.ArchiveSet
 import com.winter.godot.core.io.GodotDependencies
@@ -28,37 +28,29 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * NodeMotion 的自动识别、解密与资源校验。
+ * 加密资源包的自动识别、解密与资源校验。
  * @author Tingdong
  * @date 2026-11-21
  */
-object NodeMotionAdapter {
-    const val PACKAGE_NAME = "com.shallwaystudio.nodemotion"
+object EncryptedPackAdapter {
     private const val INDEX = "assets/assets.sparsepck"
     private const val LIBRARY = "lib/arm64-v8a/libgodot_android.so"
     private const val MAX_INDEX = 128 * 1024 * 1024
 
     /**
-     * 识别 NM 风格的定制资源包。
+     * 按资源结构识别兼容模式支持的加密包。
      * @param sources 已打开的 APK 集合。
      * @param check 取消检查。
-     * @return 是否需要 NM 自动适配。
+     * @return 是否需要兼容模式自动适配。
      * @throws CoreFailure 缺少可分析的引擎文件。
      */
-    fun probe(sources: ArchiveSet, check: () -> Unit = {}, packageName: String? = null): Boolean {
+    fun probe(sources: ArchiveSet, check: () -> Unit = {}): Boolean {
         check()
-        val expected = packageName == PACKAGE_NAME
-        if (!sources.contains(INDEX)) {
-            if (expected) throw CoreFailure("NM_BAD_INDEX", "NodeMotion resource index is missing")
-            return false
-        }
+        if (!sources.contains(INDEX)) return false
         val header = sources.open(INDEX).use { readExact(it, 8) }
         val magic = little(header).int
-        if (magic == 0x43504447 || little(header).getInt(4) != 4) {
-            if (expected) throw CoreFailure("NM_BUILD_UNSUPPORTED", "Unsupported NodeMotion resource layout")
-            return false
-        }
-        if (!sources.contains(LIBRARY)) throw CoreFailure("NM_BAD_ENGINE", "Missing arm64 engine")
+        if (magic == 0x43504447 || little(header).getInt(4) != 4) return false
+        if (!sources.contains(LIBRARY)) throw CoreFailure("ENCRYPTED_PACK_BAD_ENGINE", "Missing arm64 engine")
         return true
     }
 
@@ -79,11 +71,11 @@ object NodeMotionAdapter {
             ByteArrayOutputStream().also { SafeFiles.copy(input, it, MAX_INDEX.toLong(), check) }.toByteArray()
         }
         val parent = requireNotNull(output.absoluteFile.parentFile).apply { mkdirs() }
-        val engine = File.createTempFile(".cnm-engine-", ".so", parent)
+        val engine = File.createTempFile(".encrypted-pack-engine-", ".so", parent)
         val directory = try {
             progress(CoreProgress("decrypt"))
             sources.open(LIBRARY).use { input -> engine.outputStream().use { sink -> SafeFiles.copy(input, sink, 256L * 1024 * 1024, check) } }
-            NmKeyResolver.resolve(engine, pack, check)
+            PackKeyResolver.resolve(engine, pack, check)
         } finally { engine.delete() }
         val key = directory.key
         try {
@@ -93,12 +85,12 @@ object NodeMotionAdapter {
             val entries = ArrayList<ResourceEntry>(count)
             repeat(count) {
                 check()
-                if (index.remaining() < 4) throw CoreFailure("NM_BAD_INDEX", "Truncated path length")
+                if (index.remaining() < 4) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Truncated path length")
                 val length = index.int
-                if (length !in 1..16384 || length > index.remaining() - 36) throw CoreFailure("NM_BAD_INDEX", "Invalid path length")
+                if (length !in 1..16384 || length > index.remaining() - 36) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Invalid path length")
                 val bytes = ByteArray(length).also(index::get)
                 val end = bytes.indexOf(0).let { if (it < 0) bytes.size else it }
-                if ((end until bytes.size).any { bytes[it] != 0.toByte() }) throw CoreFailure("NM_BAD_INDEX", "Invalid path padding")
+                if ((end until bytes.size).any { bytes[it] != 0.toByte() }) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Invalid path padding")
                 val name = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes, 0, end)).toString()
                 val normalized = SafeFiles.relative(name)
                 if (!names.add(normalized)) throw CoreFailure("DUPLICATE_PATH", normalized)
@@ -106,10 +98,10 @@ object NodeMotionAdapter {
                 val size = index.long
                 val md5 = ByteArray(16).also(index::get)
                 val flags = index.int
-                if (size < 0 || flags and 1.inv() != 0) throw CoreFailure("NM_BAD_INDEX", "Unsupported entry flags or size")
+                if (size < 0 || flags and 1.inv() != 0) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Unsupported entry flags or size")
                 entries += ResourceEntry(name, size, SafeFiles.hex(md5), flags and 1 != 0)
             }
-            if (index.hasRemaining()) throw CoreFailure("NM_BAD_INDEX", "Unexpected trailing index data")
+            if (index.hasRemaining()) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Unexpected trailing index data")
             val mapping = findMapping(sources, entries, directory.salt)
             val selected = entries.filter { include(it.path) }.toMutableList()
             if (ensureVersionProbe && selected.none { it.path.endsWith(".gdc", true) })
@@ -141,7 +133,7 @@ object NodeMotionAdapter {
         var total = selected.fold(0L) { sum, entry -> Math.addExact(sum, entry.size) }
         output.mkdirs()
         if (output.usableSpace < total) throw CoreFailure("NO_SPACE", "Insufficient workspace capacity")
-        val staging = File(output.parentFile, ".nm-staging").apply { mkdirs() }
+        val staging = File(output.parentFile, ".encrypted-pack-staging").apply { mkdirs() }
         val stopped = AtomicBoolean(false)
         val copied = AtomicLong()
         val workerCheck: () -> Unit = {
@@ -273,7 +265,7 @@ object NodeMotionAdapter {
                 sources.contains("assets/${SafeFiles.hex(hash)}")
             }) return prefix to candidate
         }
-        throw CoreFailure("NM_BAD_INDEX", "Resource name mapping did not match APK entries")
+        throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Resource name mapping did not match APK entries")
     }
 
     /**
@@ -289,7 +281,7 @@ object NodeMotionAdapter {
     private fun decrypt(input: InputStream, output: OutputStream, key: ByteArray, limit: Long, check: () -> Unit, progress: (Long) -> Unit = {}): Long {
         val header = readExact(input, 40)
         val length = little(header).getLong(16)
-        if (length < 0 || length > limit || length > Long.MAX_VALUE - 15) throw CoreFailure("NM_BAD_CIPHER", "Invalid encrypted length")
+        if (length < 0 || length > limit || length > Long.MAX_VALUE - 15) throw CoreFailure("ENCRYPTED_PACK_BAD_CIPHER", "Invalid encrypted length")
         val cipher = Cipher.getInstance("AES/CFB/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(header.copyOfRange(24, 40)))
         val digest = MessageDigest.getInstance("MD5")
@@ -299,7 +291,7 @@ object NodeMotionAdapter {
         while (remaining > 0) {
             check()
             val count = input.read(buffer, 0, minOf(remaining, buffer.size.toLong()).toInt())
-            if (count <= 0) throw CoreFailure("NM_BAD_CIPHER", "Truncated encrypted data")
+            if (count <= 0) throw CoreFailure("ENCRYPTED_PACK_BAD_CIPHER", "Truncated encrypted data")
             val decoded = cipher.update(buffer, 0, count) ?: ByteArray(0)
             val take = minOf(decoded.size.toLong(), length - written).toInt()
             output.write(decoded, 0, take)

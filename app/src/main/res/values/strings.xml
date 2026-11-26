@@ -91,7 +91,7 @@
     <string name="error_open">资源包打开失败，请检查格式、文件完整性和分包。</string>
     <string name="error_checksum">资源完整性校验失败。</string>
     <string name="error_space">存储空间不足，请清理后重试。</string>
-    <string name="error_nm_build">未识别到有效的 NM 密钥材料，诊断信息已保留。</string>
+    <string name="error_encrypted_pack">未识别到有效的加密密钥材料，诊断信息已保留。</string>
     <string name="error_unsafe_path">资源包含越界、重复或冲突的路径，任务已停止。</string>
     <string name="error_engine">恢复核心异常退出，可使用本地输入副本重试。</string>
     <string name="error_timeout">后台任务已达到系统时间限制，请重新启动任务。</string>
@@ -157,7 +157,7 @@
     <string name="task_progress">处理进度</string>
     <string name="progress_percent">%1$d%%</string>
     <string name="progress_waiting">正在处理</string>
-    <string name="cnm_detected">切换至CNM模式</string>
+    <string name="compatibility_detected">切换至Super模式</string>
     <string name="choose_configuration">选择配置</string>
     <string name="start_processing">开始处理</string>
     <string name="default_configuration">默认配置</string>

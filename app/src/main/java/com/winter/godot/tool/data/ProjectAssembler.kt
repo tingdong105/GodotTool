@@ -142,7 +142,7 @@ class ProjectAssembler {
         if (!selection.keepRaw) removeOwned(directory, original)
         else if (original.name == "raw" && original.exists() && !original.renameTo(File(directory, "original")))
             throw CoreFailure("WRITE_FAILED", "Cannot finalize original resources")
-        for (name in listOf(".staging", ".nm-staging")) removeOwned(directory, File(directory, name))
+        for (name in listOf(".staging", ".encrypted-pack-staging")) removeOwned(directory, File(directory, name))
     }
 
     /**
@@ -189,7 +189,7 @@ class ProjectAssembler {
      */
     private fun removeOwned(directory: File, target: File) {
         check(target.canonicalFile.parentFile == directory.canonicalFile)
-        check(target.name in setOf("original", "raw", "recovered", ".staging", ".nm-staging", ".project-staging"))
+        check(target.name in setOf("original", "raw", "recovered", ".staging", ".encrypted-pack-staging", ".project-staging"))
         if (target.exists() && !target.deleteRecursively()) throw CoreFailure("DELETE_FAILED", target.name)
     }
 

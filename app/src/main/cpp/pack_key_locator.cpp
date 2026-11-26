@@ -150,7 +150,7 @@ std::vector<jlong> scan(const uint8_t *code, uint64_t address, size_t start, siz
 
 /** 将 Capstone 的地址引用组返回 Kotlin 校验器。 */
 extern "C" JNIEXPORT jlongArray JNICALL
-Java_com_winter_godot_tool_feature_CNM_CapstoneLocator_nativeReferences(
+Java_com_winter_godot_tool_feature_compatibility_CapstoneLocator_nativeReferences(
         JNIEnv *env, jobject, jobject buffer, jlong address, jint start, jint length) {
     const auto *bytes = static_cast<const uint8_t *>(env->GetDirectBufferAddress(buffer));
     const jlong capacity = env->GetDirectBufferCapacity(buffer);

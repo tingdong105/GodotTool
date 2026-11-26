@@ -26,9 +26,9 @@ python tools/inspect_apk.py app/build/outputs/apk/release/app-release.apk --buil
 
 Android 启动项目位于 APK 根资源 `assets/project.godot`，脚本从 `res://gdre/driver.gdc` 加载，并在挂载目标项目前加载 `res://gdre/webp_recovery.gdc`。源码保留在 `src/main/assets` 供编辑，APK 仅打包 `build/generated/gdreAssets` 中的生成资源和 `vendor/assets` 许可，不直接打包源码目录。字节码使用与内核兼容的 `ebc36a7` 修订（格式 101）；`.gdc` 避免直接发布明文，但不提供加密保护。Java 启动参数使用上游识别的 `--disable_godot_splash`。Android 的原生循环调用 DisplayServerAndroid，因此通过 1 × 1 EGL Pbuffer 配合 GLES 3 与关闭渲染循环运行，保留 Android 显示后端，避免 headless 后端的类型冲突。EGL 与引擎在同一线程创建和回收。
 
-NM 专用处理集中在主应用 `feature/CNM`。适配器优先用 Capstone 分析 ARM64 指令引用，识别不到时扫描 ELF 只读段中的置换表与异或材料，用目录的完整 MD5 验证候选密钥；同时根据目录块结构和资源哈希匹配包布局，不绑定整个引擎的 SHA 或绝对文件地址。密钥只在内存中使用，结束即清零。当前支持 NM sparsepck v4 的该类密钥构造，未匹配的构造返回诊断码 `NM_KEY_NOT_FOUND`。
+加密兼容处理集中在主应用 `feature/compatibility`。适配器优先用 Capstone 分析 ARM64 指令引用，识别不到时扫描 ELF 只读段中的置换表与异或材料，用目录的完整 MD5 验证候选密钥；同时根据目录块结构和资源哈希匹配包布局，不绑定整个引擎的 SHA 或绝对文件地址。密钥只在内存中使用，结束即清零。当前支持 sparsepck v4 的该类密钥构造，未匹配的构造返回诊断码 `ENCRYPTED_PACK_KEY_NOT_FOUND`。
 
-文件输入使用应用内 miuix 浏览器。Android 11+ 首次选择文件时申请“所有文件访问”，Android 9/10 使用存储运行时权限。处理结果自动保存到共享存储 `GodotTool/yyMMdd_次数.zip`；例如 `260101_1.zip`。同日 ZIP 原子预留递增编号，历史目录与归档均不覆盖。NM 原始资源先保存并写入阶段结果，再启动脚本恢复；原生恢复中断时保留已解密资源与部分完成记录。清理任务缓存保留公共结果。`engine.log` 与 `bootstrap.log` 用于记录原生启动及 Java 启动异常。
+文件输入使用应用内 miuix 浏览器。Android 11+ 首次选择文件时申请“所有文件访问”，Android 9/10 使用存储运行时权限。处理结果自动保存到共享存储 `GodotTool/yyMMdd_次数.zip`；例如 `260101_1.zip`。同日 ZIP 原子预留递增编号，历史目录与归档均不覆盖。兼容模式原始资源先保存并写入阶段结果，再启动脚本恢复；原生恢复中断时保留已解密资源与部分完成记录。清理任务缓存保留公共结果。`engine.log` 与 `bootstrap.log` 用于记录原生启动及 Java 启动异常。
 
 离屏驱动在主线程创建不挂载窗口的 `OffscreenRenderView`，在引擎线程创建 EGL 并注册插件列表中的全部插件。该接口覆盖原生 Android 后端访问的光标/输入方法，避免缺失 renderView 的空指针路径；对应 JNI 方法在 Release 保留。
 
@@ -38,10 +38,10 @@ NM 专用处理集中在主应用 `feature/CNM`。适配器优先用 Capstone �
 
 恢复内容由 RecoverySelection 选择：项目脚本、场景和资源配置、素材与数据、addons 插件、项目入口配置。默认完整恢复，原始副本默认关闭。导入时可选择“仅项目脚本”，该预设不导出插件、场景、素材和项目配置，用于静态阅读。所选 import/remap 的编译依赖与版本识别数据在工作区内保留，避免把隐藏缓存当作用户内容盲目全选。
 
-CNM 在解密资源前应用选择，按已选 import/remap 追踪真实编译文件，必要时保留一个脚本版本探针。普通 APK/PCK 在 GDRE 提取前按同一职责筛选。importer 的 dest_files 用于关联编译缓存与源码路径，避免只改后缀或移动文件破坏 res 引用。
+兼容模式在解密资源前应用选择，按已选 import/remap 追踪真实编译文件，必要时保留一个脚本版本探针。普通 APK/PCK 在 GDRE 提取前按同一职责筛选。importer 的 dest_files 用于关联编译缓存与源码路径，避免只改后缀或移动文件破坏 res 引用。
 
 新版公共输出为 `yyMMdd_次数.zip`，归档内包含 `project/` 与 `reports/`，勾选保留原始副本时额外包含 `raw/`。处理中资源仅写应用私有工作区，原生恢复前发布阶段 ZIP，恢复结束原子替换为完整 ZIP。日志采用固定长度快照，追加写入不触发资源大小超限；取消或保存失败保留上一份完整归档。ProjectAssembler 合并恢复文件和原始素材，成功转换后移除对应的 gdc/scn/res、冗余 remap 与普通引擎缓存；转换失败但仍被选中资源引用的缓存会保留。目录和文件名保留原包真实路径及大小写。先提交完整 project 目录，再回收中间产物，取消时清理未提交的工程目录。历史 raw/recovered 结果继续可浏览。
 
-识别 APK 包名 `com.shallwaystudio.nodemotion` 自动进入 CNM，索引格式异常返回 NM 专属诊断；继续保留资源结构探测。界面使用 miuix 0.9.4 的官方 OverlayDialog 与 OverlayDropdownPreference（内部调用 OverlayListPopup），宿主释放时清理弹层状态。
+根据加密资源结构自动进入兼容模式，不绑定应用包名；索引格式异常返回加密资源诊断。模式切换日志显示“切换至Super模式”，沿用普通日志样式。界面使用 miuix 0.9.4 的官方 OverlayDialog 与 OverlayDropdownPreference（内部调用 OverlayListPopup），宿主释放时清理弹层状态。
 
 导航使用与 UI 同版本的 `miuix-nav` 独立模块，官方 NavController 管理返回栈，NavDisplay 提供转场和预测返回。页面键的枚举名称由 SavedStateHandle 持久化，不调用要求序列化插件的 rememberNavBackStack；一级标签共享稳定 contentKey，文件目录和预览优先处理页面内返回。准备脚本从版本目录同步 miuix/MMKV 许可版本。

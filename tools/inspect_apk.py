@@ -47,11 +47,11 @@ def inspect(apk: Path, build_tools: Path) -> None:
         assert "Capstone" in archive.read("assets/txt/licenses.txt").decode("utf-8")
         assert "lib/arm64-v8a/libcnm.so" in archive.namelist()
         locator = archive.read("lib/arm64-v8a/libcnm.so")
-        assert b"Java_com_winter_godot_tool_feature_CNM_CapstoneLocator_nativeReferences" in locator
+        assert b"Java_com_winter_godot_tool_feature_compatibility_CapstoneLocator_nativeReferences" in locator
         dex = b"".join(archive.read(name) for name in archive.namelist() if name.endswith(".dex"))
         assert b"res://gdre/driver.gdc" in dex, "Missing compiled driver entry"
         assert b"Lcom/winter/godot/core/engine/OffscreenRenderView;" in dex, "JNI offscreen view was removed or renamed"
-        assert b"Lcom/winter/godot/tool/feature/CNM/CapstoneLocator;" in dex, "Capstone JNI class was removed or renamed"
+        assert b"Lcom/winter/godot/tool/feature/compatibility/CapstoneLocator;" in dex, "Capstone JNI class was removed or renamed"
         assert b"nativeReferences" in dex, "Capstone JNI entry was renamed"
         for method in (b"configurePointerIcon", b"setPointerIcon", b"canCapturePointer", b"getRenderView"):
             assert method in dex, "Missing JNI view method: " + method.decode()

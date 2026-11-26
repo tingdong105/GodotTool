@@ -59,7 +59,10 @@ object RecoveryReport {
                         appendLine("| 输入文件 | ${escapeCell(names.joinToString("\n"))} |")
                     }
                     result.optString("engine").takeIf { it.isNotEmpty() }?.let { appendLine("| Godot 版本 | ${escapeCell(it)} |") }
-                    result.optString("adapter").takeIf { it.isNotEmpty() }?.let { appendLine("| 适配模式 | ${escapeCell(it)} |") }
+                    result.optString("adapter").takeIf { it.isNotEmpty() }?.let { adapter ->
+                        val mode = when (adapter) { "compatibility", "CNM" -> "Super"; else -> adapter }
+                        appendLine("| 适配模式 | ${escapeCell(mode)} |")
+                    }
                     appendLine()
                     appendLine("## 恢复统计")
                     appendLine()

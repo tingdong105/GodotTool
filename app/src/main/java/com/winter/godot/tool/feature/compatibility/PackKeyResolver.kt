@@ -1,4 +1,4 @@
-package com.winter.godot.tool.feature.CNM
+package com.winter.godot.tool.feature.compatibility
 
 import com.winter.godot.core.model.CoreFailure
 import java.io.File
@@ -12,11 +12,11 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * 通过置换材料与目录摘要自动恢复 NM 密钥。
+ * 通过置换材料与目录摘要自动恢复加密资源密钥。
  * @author Tingdong
  * @date 2026-11-21
  */
-internal object NmKeyResolver {
+internal object PackKeyResolver {
     /**
      * 已验证的资源目录与临时密钥。
      * @author Tingdong
@@ -67,12 +67,12 @@ internal object NmKeyResolver {
         val offsets = directoryOffsets(pack)
         RandomAccessFile(engine, "r").use { file ->
             val header = ByteArray(64).also(file::readFully)
-            if (!header.copyOfRange(0, 6).contentEquals(byteArrayOf(127, 69, 76, 70, 2, 1))) throw CoreFailure("NM_BAD_ENGINE", "Expected little-endian ELF64")
+            if (!header.copyOfRange(0, 6).contentEquals(byteArrayOf(127, 69, 76, 70, 2, 1))) throw CoreFailure("ENCRYPTED_PACK_BAD_ENGINE", "Expected little-endian ELF64")
             val elf = little(header)
             val phOffset = elf.getLong(32)
             val phSize = elf.getShort(54).toInt() and 65535
             val phCount = elf.getShort(56).toInt() and 65535
-            if (phSize < 56 || phCount !in 1..256 || phOffset < 0 || phOffset > file.length() - phSize.toLong() * phCount) throw CoreFailure("NM_BAD_ENGINE", "Invalid ELF program table")
+            if (phSize < 56 || phCount !in 1..256 || phOffset < 0 || phOffset > file.length() - phSize.toLong() * phCount) throw CoreFailure("ENCRYPTED_PACK_BAD_ENGINE", "Invalid ELF program table")
             val segments = ArrayList<Segment>()
             for (segment in 0 until phCount) {
                 check()
@@ -85,7 +85,7 @@ internal object NmKeyResolver {
                 val length = data.getLong(32)
                 // Android 链接器可将只读常量合入 R-X 段，依据写权限筛选。
                 if (type != 1 || flags and 4 == 0 || flags and 2 != 0 || length < 32) continue
-                if (offset < 0 || length > 128L * 1024 * 1024 || offset > file.length() - length || address < 0 || address > Long.MAX_VALUE - length) throw CoreFailure("NM_BAD_ENGINE", "Invalid ELF data segment")
+                if (offset < 0 || length > 128L * 1024 * 1024 || offset > file.length() - length || address < 0 || address > Long.MAX_VALUE - length) throw CoreFailure("ENCRYPTED_PACK_BAD_ENGINE", "Invalid ELF data segment")
                 val bytes = file.channel.map(FileChannel.MapMode.READ_ONLY, offset, length)
                 segments += Segment(address, flags, bytes)
             }
@@ -121,13 +121,13 @@ internal object NmKeyResolver {
                 for (first in start..end step 16) {
                     for (second in first + 32..end step 16) {
                         if (++attempts and 1023 == 0) check()
-                        if (attempts > 2000000) throw CoreFailure("NM_KEY_NOT_FOUND", "No validated key in supported material layouts")
+                        if (attempts > 2000000) throw CoreFailure("ENCRYPTED_PACK_KEY_NOT_FOUND", "No validated key in supported material layouts")
                         test(bytes, position, first, second, pack, offsets)?.let { return it }
                     }
                 }
             }
         }
-        throw CoreFailure("NM_KEY_NOT_FOUND", "No key candidate passed directory MD5 verification")
+        throw CoreFailure("ENCRYPTED_PACK_KEY_NOT_FOUND", "No key candidate passed directory MD5 verification")
     }
 
     /**
@@ -232,7 +232,7 @@ internal object NmKeyResolver {
      * @return 结构合法的目录偏移。
      */
     private fun directoryOffsets(pack: ByteArray): List<Int> {
-        if (pack.size < 120 || little(pack).getInt(4) != 4) throw CoreFailure("NM_BAD_INDEX", "Unsupported sparse pack header")
+        if (pack.size < 120 || little(pack).getInt(4) != 4) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Unsupported sparse pack header")
         val data = little(pack)
         val result = mutableListOf<Int>()
         for (offset in 72..minOf(pack.size - 60, 65536) step 4) {
@@ -243,7 +243,7 @@ internal object NmKeyResolver {
             if (offset + 44L + encrypted == pack.size.toLong()) result += offset
             if (result.size >= 8) break
         }
-        if (result.isEmpty()) throw CoreFailure("NM_BAD_INDEX", "Encrypted directory header not found")
+        if (result.isEmpty()) throw CoreFailure("ENCRYPTED_PACK_BAD_INDEX", "Encrypted directory header not found")
         return result
     }
 

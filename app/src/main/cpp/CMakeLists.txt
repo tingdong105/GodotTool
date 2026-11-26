@@ -18,7 +18,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory("${CAPSTONE_SOURCE_DIR}" capstone EXCLUDE_FROM_ALL)
 
-add_library(cnm SHARED cnm_key_locator.cpp)
+add_library(cnm SHARED pack_key_locator.cpp)
 target_compile_features(cnm PRIVATE cxx_std_17)
 target_link_libraries(cnm PRIVATE capstone_static)
 set_target_properties(cnm PROPERTIES CXX_VISIBILITY_PRESET hidden)

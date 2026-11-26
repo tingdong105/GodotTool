@@ -68,7 +68,7 @@ import com.winter.godot.tool.ui.theme.GodotToolTheme
 annotation class ScreenPreviews
 
 // 仅预览使用的示例任务。
-private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "NodeMotion 1.0.2", status = TaskStatus.SUCCEEDED, stage = "done",
+private val exampleTask = TaskRecord("11111111-1111-1111-1111-111111111111", "示例项目 1.0.2", status = TaskStatus.SUCCEEDED, stage = "done",
     summary = "{\"resources\":2893,\"scripts\":229,\"engine\":\"4.5.0\"}")
 
 /** 对比页面的手机和平板明暗预览。 */
@@ -246,7 +246,7 @@ private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) { Tasks
 @ScreenPreviews
 @Composable
 private fun TasksSelectionPreview() { GodotToolTheme {
-    val records = (1..3).map { exampleTask.copy(id = "11111111-1111-1111-1111-11111111111$it", name = "NodeMotion 1.0.$it") }
+    val records = (1..3).map { exampleTask.copy(id = "11111111-1111-1111-1111-11111111111$it", name = "示例项目 1.0.$it") }
     var selected by remember { mutableStateOf(setOf(records.first().id)) }
     ToolScaffold(Screen.TASKS, titleOverride = if (selected.isNotEmpty()) "已选 ${selected.size} 项" else null, actions = {
         if (selected.isNotEmpty()) TasksSelectAllButton(selected.size == records.size, true) {
@@ -345,7 +345,7 @@ private fun LicensesPreview() { GodotToolTheme {
 private fun FilesPreview() {
     var state by remember { mutableStateOf(ToolUiState(screen = Screen.FILES, browserPath = "/storage/emulated/0/Download",
         browserFiles = listOf(BrowserFile("Projects", "/storage/emulated/0/Download/Projects", true, 0),
-            BrowserFile("NodeMotion.apk", "/storage/emulated/0/Download/NodeMotion.apk", false, 100835140, 1795507200000)))) }
+            BrowserFile("示例项目.apk", "/storage/emulated/0/Download/示例项目.apk", false, 100835140, 1795507200000)))) }
     GodotToolTheme {
         ToolScaffold(Screen.FILES, actions = {
             FileSortButton(state.browserSort, state.browserReversed, state.browserDirectoryOnly, { order, reversed, directoryOnly ->
@@ -364,7 +364,7 @@ private fun FilesPreview() {
 private fun WorkspacePreview() {
     val entries = listOf(WorkspaceEntry("original/scripts/Exporter.gdc", 16384), WorkspaceEntry("unpacked/scripts/Exporter.gd", 32768, "scripts/Exporter.gdc"),
         WorkspaceEntry("original/project.binary", 4096), WorkspaceEntry("unpacked/project.godot", 2048), WorkspaceEntry("report.md", 1024))
-    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "NodeMotion 1.0.2") { WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries,
+    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "示例项目 1.0.2") { WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries,
         previewPath = "unpacked/scripts/Exporter.gd", previewText = "extends Node\n\nfunc export_video():\n\tvar encoder = VideoEncoder.new()\n\tencoder.encode_at(frame)"), {}) } }
 }
 
@@ -375,7 +375,7 @@ private fun WorkspacePreview() {
 @Composable
 private fun UnrecoveredWorkspacePreview() {
     val entries = listOf(WorkspaceEntry("original/scripts/Main.gdc", 16384), WorkspaceEntry("report.md", 2048))
-    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "NodeMotion") {
+    GodotToolTheme { ToolScaffold(Screen.WORKSPACE, "示例项目") {
         WorkspaceScreen(ToolUiState(screen = Screen.WORKSPACE, workspaceId = exampleTask.id, entries = entries), {})
     } }
 }
@@ -410,7 +410,7 @@ private fun HomeProcessingPreview() { GodotToolTheme { ToolScaffold(Screen.HOME)
     HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(status = TaskStatus.RUNNING, stage = "recover", overallProgress = 0.62f, selection = RecoverySelection.scriptsOnly()), true,
         {}, {}, {}, {}, {}, {}, {}, {}, listOf(
             com.winter.godot.tool.data.TaskLogLine("import", "正在读取文件"),
-            com.winter.godot.tool.data.TaskLogLine("mode", "切换至CNM模式", com.winter.godot.tool.data.TaskLogLevel.ACCENT),
+            com.winter.godot.tool.data.TaskLogLine("mode", "切换至Super模式"),
             com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件")))
 } } }
 

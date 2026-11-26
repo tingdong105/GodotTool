@@ -1,4 +1,4 @@
-package com.winter.godot.tool.feature.CNM
+package com.winter.godot.tool.feature.compatibility
 
 import java.nio.ByteBuffer
 
