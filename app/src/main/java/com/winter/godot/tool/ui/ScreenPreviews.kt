@@ -47,6 +47,7 @@ import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.settings.about.AboutScreen
 import com.winter.godot.tool.feature.settings.about.AboutUiState
 import com.winter.godot.tool.feature.settings.about.LicensesScreen
+import com.winter.godot.tool.feature.tasks.TasksClearButton
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
@@ -241,7 +242,7 @@ private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing
                     com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件 scripts/components/player_controller_$it.gd")
                 } else emptyList())
             else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {})
-            else SettingsScreen(settings, false, {}, {})
+            else SettingsScreen(settings, {})
         }
     }
 }
@@ -251,8 +252,17 @@ private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing
  */
 @ScreenPreviews
 @Composable
-private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) { TasksScreen(listOf(exampleTask.copy(id = "22222222-2222-2222-2222-222222222222", status = TaskStatus.RUNNING,
+private fun TasksPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS, actions = { TasksClearButton(false, {}) }) { TasksScreen(listOf(exampleTask.copy(id = "22222222-2222-2222-2222-222222222222", status = TaskStatus.RUNNING,
     stage = "extract", bytes = 25000000, totalBytes = 100000000, files = 620, totalFiles = 2893), exampleTask), "22222222-2222-2222-2222-222222222222", {}) } } }
+
+/**
+ * 处理记录清理入口的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun TasksFinishedPreview() { GodotToolTheme {
+    ToolScaffold(Screen.TASKS, actions = { TasksClearButton(true, {}) }) { TasksScreen(listOf(exampleTask), null, {}) }
+} }
 
 /**
  * 处理记录多选与删除 FAB 的手机和平板明暗预览。
@@ -265,7 +275,7 @@ private fun TasksSelectionPreview() { GodotToolTheme {
     ToolScaffold(Screen.TASKS, titleOverride = if (selected.isNotEmpty()) "已选 ${selected.size} 项" else null, actions = {
         if (selected.isNotEmpty()) TasksSelectAllButton(selected.size == records.size, true) {
             selected = if (selected.size == records.size) emptySet() else records.map { it.id }.toSet()
-        }
+        } else TasksClearButton(true, {})
     }) {
         TasksScreen(records, null, {}, selected = selected,
             onSelect = { id -> selected = if (id in selected) selected - id else selected + id })
@@ -279,7 +289,7 @@ private fun TasksSelectionPreview() { GodotToolTheme {
 @Preview(name = "手机横屏·浅色", widthDp = 900, heightDp = 400, showBackground = true)
 @Preview(name = "手机横屏·暗色", widthDp = 900, heightDp = 400, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), false, {}, {}) } } }
+private fun SettingsPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) { SettingsScreen(ToolSettings(), {}) } } }
 
 /**
  * 过滤规则空列表的手机和平板明暗预览。

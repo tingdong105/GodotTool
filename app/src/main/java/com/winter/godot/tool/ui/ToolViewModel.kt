@@ -553,8 +553,20 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * 清理已结束的全部工作区。
      */
     fun clearFinished() {
+        if (active.value != null || ui.value.deletingTasks || BackupAccess.busy.value) return
+        mutableUi.update { it.copy(deletingTasks = true) }
         viewModelScope.launch {
-            runCatching { repository.clearFinished() }.onSuccess { showError(R.string.cleanup_complete) }.onFailure { showError(R.string.error_cleanup, it.message.orEmpty()) }
+            try {
+                repository.clearFinished()
+                showError(R.string.cleanup_complete)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                showError(R.string.error_cleanup, error.message.orEmpty())
+            } finally {
+                val remaining = tasks.value.map { it.id }.toSet()
+                mutableUi.update { it.copy(deletingTasks = false, selectedTasks = it.selectedTasks.intersect(remaining)) }
+            }
         }
     }
 

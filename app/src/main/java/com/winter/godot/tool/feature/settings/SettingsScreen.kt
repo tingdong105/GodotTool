@@ -1,9 +1,7 @@
 package com.winter.godot.tool.feature.settings
 
-import android.content.ClipData
 import android.os.Build
 import android.view.MotionEvent
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,9 +24,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -43,7 +38,6 @@ import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.AdaptiveColumns
 import com.winter.godot.tool.ui.LocalRootBottomInset
 import com.winter.godot.tool.ui.ToolDevice
-import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.rememberMovableToolContent
 import com.winter.godot.tool.ui.theme.Theme
@@ -62,7 +56,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 分组管理外观、恢复偏好、存储和关于入口。
+ * 分组管理外观、恢复偏好、对比、备份和关于入口。
  * @param onAbout 打开关于软件页面。
  * @param onComparisonRules 打开对比过滤规则设置。
  * @param onComparisonFocusRules 打开对比关心规则设置。
@@ -75,18 +69,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param onThemeDismiss 取消选择时释放截图。
  */
 @Composable
-fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit,
+fun SettingsScreen(settings: ToolSettings, onChange: (ToolSettings) -> Unit,
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
     onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}, onComparisonFocusRules: () -> Unit = {},
     onBackup: () -> Unit = {}, onRestore: () -> Unit = {}, backupEnabled: Boolean = true) {
-    var clearing by remember { mutableStateOf(false) }
     val phoneList = rememberLazyListState()
     val tabletScroll = rememberScrollState()
-    val clipboard = LocalClipboard.current
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val outputLabel = stringResource(R.string.output_directory)
-    val outputPath = stringResource(R.string.output_path)
     val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
     val bottomInset = LocalRootBottomInset.current
     val appearance = rememberMovableToolContent {
@@ -125,18 +113,6 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
             ArrowPreference(title = stringResource(R.string.backup_restore), enabled = backupEnabled, onClick = onRestore)
         }
     }
-    val storage = rememberMovableToolContent {
-        SectionTitle(stringResource(R.string.storage))
-        Card {
-            BasicComponent(title = outputLabel, summary = outputPath, onClick = {
-                scope.launch {
-                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(outputLabel, outputPath)))
-                    Toast.makeText(context, R.string.output_directory_copied, Toast.LENGTH_SHORT).show()
-                }
-            })
-            ArrowPreference(title = stringResource(R.string.clear_cache), enabled = !busy, onClick = { clearing = true })
-        }
-    }
     val about = rememberMovableToolContent {
         SectionTitle(stringResource(R.string.about))
         Card {
@@ -150,16 +126,13 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
             item { recovery() }
             item { comparison() }
             item { backup() }
-            item { storage() }
             item { about() }
         }
     } else {
         AdaptiveColumns(scrollState = tabletScroll, spacing = 0.dp, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
             top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset),
-            primary = { appearance(); recovery() }, secondary = { comparison(); backup(); storage(); about() })
+            primary = { appearance(); recovery() }, secondary = { comparison(); backup(); about() })
     }
-    if (clearing) ConfirmDialog(stringResource(R.string.clear_cache_title), stringResource(R.string.clear_cache_detail),
-        { clearing = false }, { clearing = false; onClear() })
 }
 
 /**

@@ -66,6 +66,7 @@ import com.winter.godot.tool.feature.settings.SettingsScreen
 import com.winter.godot.tool.feature.settings.about.AboutScreen
 import com.winter.godot.tool.feature.settings.about.AboutViewModel
 import com.winter.godot.tool.feature.settings.about.LicensesScreen
+import com.winter.godot.tool.feature.tasks.TasksClearButton
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
@@ -216,7 +217,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                             }, back, active = destination == ui.screen)
                         Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
                             ui.selectedTasks, ui.deletingTasks, model::selectTask)
-                        Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
+                        Screen.SETTINGS -> SettingsScreen(settings, model::updateSettings,
                             onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
                             onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) },
                             onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) },
@@ -281,9 +282,13 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         ruleList != null && ruleList.selectedIds.isNotEmpty() -> stringResource(R.string.tasks_selected, ruleList.selectedIds.size)
                         else -> null
                     }, actions = {
-                    if (screen == Screen.TASKS && ui.selectedTasks.isNotEmpty()) {
+                    if (screen == Screen.TASKS) {
                         val selectableCount = tasks.count { it.status != TaskStatus.RUNNING && it.id != active }
-                        TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
+                        if (ui.selectedTasks.isNotEmpty()) {
+                            TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
+                        } else {
+                            TasksClearButton(active == null && !ui.deletingTasks && !backupBusy && selectableCount > 0, model::clearFinished)
+                        }
                     }
                     if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
                     if (ruleGroup != null && ruleList != null) {

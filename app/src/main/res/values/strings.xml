@@ -54,7 +54,6 @@
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
-    <string name="storage">存储</string>
     <string name="clear_cache">清理工作区</string>
     <string name="clear_cache_title">清理全部工作区？</string>
     <string name="clear_cache_detail">将删除已结束任务及其输入副本和缓存。GodotTool 公共目录中的结果会保留。</string>
@@ -101,9 +100,6 @@
     <string name="error_limit">资源数量或索引大小超出处理范围。</string>
     <string name="home">首页</string>
     <string name="history">处理记录</string>
-    <string name="output_directory">输出目录</string>
-    <string name="output_directory_copied">复制成功</string>
-    <string name="output_path">/storage/emulated/0/GodotTool/</string>
     <string name="shared_storage">内部存储</string>
     <string name="storage_permission">访问文件</string>
     <string name="storage_permission_detail">请允许管理所有文件，以便浏览资源包并将结果保存到内部存储的 GodotTool 文件夹。</string>

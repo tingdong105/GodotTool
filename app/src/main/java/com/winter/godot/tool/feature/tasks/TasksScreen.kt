@@ -189,6 +189,22 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onDelete: (Set<String>
 }
 
 /**
+ * 处理记录顶栏的工作区清理入口，确认后执行清理。
+ * @param enabled 是否允许清理已结束任务。
+ * @param onClear 清理全部已结束任务及其私有工作区。
+ */
+@Composable
+fun TasksClearButton(enabled: Boolean, onClear: () -> Unit) {
+    var confirming by rememberSaveable { mutableStateOf(false) }
+    IconButton(onClick = { confirming = true }, enabled = enabled, modifier = Modifier.size(Theme.sizes.largeIcon)) {
+        Icon(MiuixIcons.Delete, stringResource(R.string.clear_cache), Modifier.size(Theme.sizes.icon),
+            tint = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.disabledOnSurface)
+    }
+    if (confirming) ConfirmDialog(stringResource(R.string.clear_cache_title), stringResource(R.string.clear_cache_detail),
+        onDismiss = { confirming = false }, onConfirm = { confirming = false; onClear() }, confirmEnabled = enabled)
+}
+
+/**
  * 多选顶栏的全选图标，选满后高亮并支持取消全选。
  * @param allSelected 是否已选满可删除记录。
  * @param enabled 是否允许切换选择。
