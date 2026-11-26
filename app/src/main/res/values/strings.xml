@@ -14,12 +14,12 @@
     <string name="retry">重试</string>
     <string name="delete">删除</string>
     <string name="delete_title">删除工作区？</string>
-    <string name="delete_detail">将删除输入副本、缓存和任务记录。GodotTool 公共目录中的结果会保留。</string>
+    <string name="delete_detail">确认删除输入副本、缓存和任务记录吗？GodotTool 公共目录中的结果会保留。</string>
     <string name="tasks_selected">已选 %1$d 项</string>
     <string name="tasks_select_all">全选</string>
     <string name="tasks_deselect_all">取消全选</string>
     <string name="tasks_delete_title">删除处理记录？</string>
-    <string name="tasks_delete_detail">将删除所选 %1$d 条记录及其输入副本和缓存。GodotTool 公共目录中的结果会保留。</string>
+    <string name="tasks_delete_detail">确认删除所选 %1$d 条记录吗？GodotTool 公共目录中的结果会保留。</string>
     <string name="tasks_delete_selected">删除所选 %1$d 条记录</string>
     <string name="task_warning_config">工程配置转换失败，其他已完成的产物已保留。</string>
     <string name="task_warning_unsupported">当前 Godot 版本暂不支持源码恢复，原始资源已保留。</string>
@@ -235,7 +235,7 @@
     <string name="compare_read_failed">快照读取失败，请确认文件完整且由本工具生成。</string>
     <string name="compare_result">对比结果</string>
     <string name="compare_history">对比记录</string>
-    <string name="compare_delete_confirm">删除所选的 %1$d 条软件内记录？GodotTool/diff 中的公开报告会保留。</string>
+    <string name="compare_delete_confirm">确认删除所选的 %1$d 条软件内记录吗？</string>
     <string name="compare_delete_title">删除对比记录</string>
     <string name="compare_confirm_delete">确认删除</string>
     <string name="compare_history_failed">记录读取失败，请检查应用存储空间。</string>
@@ -329,7 +329,7 @@
     <string name="compare_edit_rule">编辑规则</string>
     <string name="compare_save_rule">保存</string>
     <string name="compare_delete_rule">删除规则？</string>
-    <string name="compare_delete_rules_detail">删除选中的 %1$d 条规则？命中的对比结果将恢复显示。</string>
+    <string name="compare_delete_rules_detail">确认删除选中的 %1$d 条规则吗？</string>
     <string name="compare_rules_sort_time">按时间排序</string>
     <string name="compare_rule_too_long">规则内容最多 256 个字符。</string>
     <string name="compare_rules_load_failed">对比规则读取失败，请重试。</string>
@@ -347,7 +347,7 @@
     <string name="compare_close_search">关闭搜索</string>
     <string name="compare_focus_rules">关心规则</string>
     <string name="compare_focus_rules_empty">暂无关心规则</string>
-    <string name="compare_delete_focus_rules_detail">删除选中的 %1$d 条规则？对应的关心标记将重新计算。</string>
+    <string name="compare_delete_focus_rules_detail">确认删除选中的 %1$d 条规则吗？</string>
     <string name="compare_no_focused_fields">暂无关心的字段</string>
     <string name="compare_focus_count_detail">%1$s：关心 %2$d（原始 %3$d）</string>
 </resources>

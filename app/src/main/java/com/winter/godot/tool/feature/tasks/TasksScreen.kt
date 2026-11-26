@@ -47,6 +47,7 @@ import androidx.compose.ui.state.ToggleableState
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.TaskProgress
@@ -175,16 +176,12 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onDelete: (Set<String>
         }
     }
     val confirmedIds = pendingDeletion.toSet().intersect(selectable)
-    if (confirmedIds.isNotEmpty() && !busy) ToolDialog(stringResource(R.string.tasks_delete_title), { pendingDeletion = arrayListOf() }) {
-        Text(stringResource(R.string.tasks_delete_detail, confirmedIds.size), style = Theme.typography.body)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-            TextButton(stringResource(R.string.cancel), { pendingDeletion = arrayListOf() }, Modifier.weight(1f))
-            PrimaryButton(stringResource(R.string.delete), {
-                pendingDeletion = arrayListOf()
-                onDelete(confirmedIds)
-            }, Modifier.weight(1f))
-        }
-    }
+    if (confirmedIds.isNotEmpty() && !busy) ConfirmDialog(
+        title = stringResource(R.string.tasks_delete_title),
+        detail = stringResource(R.string.tasks_delete_detail, confirmedIds.size),
+        onDismiss = { pendingDeletion = arrayListOf() },
+        onConfirm = { pendingDeletion = arrayListOf(); onDelete(confirmedIds) },
+        confirmText = stringResource(R.string.delete))
 }
 
 /**

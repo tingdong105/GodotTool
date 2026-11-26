@@ -47,10 +47,10 @@ import com.winter.godot.tool.R
 import com.winter.godot.tool.ui.LocalRootBottomInset
 import com.winter.godot.tool.ui.LocalWideContent
 import com.winter.godot.tool.ui.ToolDevice
+import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.SectionTitle
-import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.theme.Theme
 import top.yukonga.miuix.kmp.basic.Card
@@ -61,7 +61,6 @@ import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.FloatingActionButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -134,13 +133,12 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
             historyPane(Modifier.weight(1f).fillMaxHeight(), !wide)
         }
     }
-    if (deleting && selecting) ToolDialog(stringResource(R.string.compare_delete_title), { deleting = false }) {
-        Text(stringResource(R.string.compare_delete_confirm, state.selected.size), style = Theme.typography.body)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-            TextButton(stringResource(R.string.cancel), { deleting = false }, Modifier.weight(1f))
-            PrimaryButton(stringResource(R.string.compare_confirm_delete), { deleting = false; if (state.selected.isNotEmpty()) onDelete() }, Modifier.weight(1f))
-        }
-    }
+    if (deleting && selecting) ConfirmDialog(
+        title = stringResource(R.string.compare_delete_title),
+        detail = stringResource(R.string.compare_delete_confirm, state.selected.size),
+        onDismiss = { deleting = false },
+        onConfirm = { deleting = false; if (state.selected.isNotEmpty()) onDelete() },
+        confirmText = stringResource(R.string.compare_confirm_delete))
     state.progress?.let { progress -> key(progress.id) { ComparisonProgressDialog(progress, onCancel, onProgressFinished) } }
 }
 

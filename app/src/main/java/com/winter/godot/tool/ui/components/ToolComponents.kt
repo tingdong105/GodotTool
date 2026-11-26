@@ -32,6 +32,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
@@ -162,19 +164,24 @@ fun ToolDialog(title: String, onDismiss: () -> Unit, content: @Composable () -> 
 }
 
 /**
- * 需用户确认的清理对话框。
+ * 删除与清理共用的确认对话框。
  * @param title 标题。
- * @param detail 清理内容。
+ * @param detail 操作说明。
  * @param onDismiss 取消回调。
  * @param onConfirm 确认回调。
+ * @param confirmText 确认按钮文案。
+ * @param confirmEnabled 确认按钮是否可用。
  */
 @Composable
-fun ConfirmDialog(title: String, detail: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+fun ConfirmDialog(title: String, detail: String, onDismiss: () -> Unit, onConfirm: () -> Unit,
+    confirmText: String = stringResource(R.string.confirm), confirmEnabled: Boolean = true) {
     ToolDialog(title, onDismiss) {
-        Text(detail, style = Theme.typography.body)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
+        Text(detail, modifier = Modifier.fillMaxWidth(),
+            style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Normal, lineHeight = 1.5f.em),
+            color = MiuixTheme.colorScheme.onSurface)
+        Row(Modifier.fillMaxWidth().padding(top = Theme.spacing.sm), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
             TextButton(stringResource(R.string.cancel), onDismiss, Modifier.weight(1f))
-            PrimaryButton(stringResource(R.string.confirm), onConfirm, modifier = Modifier.weight(1f))
+            PrimaryButton(confirmText, onConfirm, modifier = Modifier.weight(1f), enabled = confirmEnabled)
         }
     }
 }

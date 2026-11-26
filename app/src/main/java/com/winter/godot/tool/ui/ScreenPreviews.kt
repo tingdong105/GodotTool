@@ -46,6 +46,7 @@ import com.winter.godot.tool.feature.settings.about.LicensesScreen
 import com.winter.godot.tool.feature.tasks.TasksScreen
 import com.winter.godot.tool.feature.tasks.TasksSelectAllButton
 import com.winter.godot.tool.feature.workspace.WorkspaceScreen
+import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.theme.GodotToolTheme
 
 /**
@@ -106,6 +107,15 @@ private fun ComparisonSelectionPreview() { GodotToolTheme { ToolScaffold(Screen.
     val records = (1..3).map { index -> ComparisonRecord("11111111-1111-1111-1111-11111111111$index", index.toLong(),
         "Example 1.$index", "Example 1.${index + 1}", header, header.copy(version = "1.1"), listOf(1, 2, 3, 0, 0)) }
     CompareScreen(CompareUiState(histories = records, selected = setOf(records.first().id), historyLoading = false), {}, {}, {}, {}, {}, {})
+} } }
+
+/** 删除确认弹窗的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun DeleteConfirmationPreview() { GodotToolTheme { ToolScaffold(Screen.TASKS) {
+    ConfirmDialog(title = stringResource(R.string.tasks_delete_title),
+        detail = stringResource(R.string.tasks_delete_detail, 3), onDismiss = {}, onConfirm = {},
+        confirmText = stringResource(R.string.delete))
 } } }
 
 /**

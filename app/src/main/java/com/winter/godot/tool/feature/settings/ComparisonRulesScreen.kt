@@ -58,9 +58,9 @@ import com.winter.godot.tool.feature.compare.RuleGroup
 import com.winter.godot.tool.feature.compare.RuleMatch
 import com.winter.godot.tool.feature.compare.RuleTarget
 import com.winter.godot.tool.feature.compare.sortComparisonRules
+import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
-import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.theme.Theme
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -192,15 +192,12 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
         }
     }
     val confirmed = pendingDeletion.toSet().intersect(rules.map { it.id }.toSet())
-    if (confirmed.isNotEmpty()) ToolDialog(stringResource(R.string.compare_delete_rule), { pendingDeletion = arrayListOf() }) {
-        Text(stringResource(if (group == RuleGroup.FILTER) R.string.compare_delete_rules_detail else R.string.compare_delete_focus_rules_detail, confirmed.size), style = Theme.typography.body)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
-            TextButton(stringResource(R.string.cancel), { pendingDeletion = arrayListOf() }, Modifier.weight(1f))
-            PrimaryButton(stringResource(R.string.delete), {
-                if (enabled) { pendingDeletion = arrayListOf(); onDelete(confirmed) }
-            }, Modifier.weight(1f), enabled = enabled)
-        }
-    }
+    if (confirmed.isNotEmpty()) ConfirmDialog(
+        title = stringResource(R.string.compare_delete_rule),
+        detail = stringResource(if (group == RuleGroup.FILTER) R.string.compare_delete_rules_detail else R.string.compare_delete_focus_rules_detail, confirmed.size),
+        onDismiss = { pendingDeletion = arrayListOf() },
+        onConfirm = { if (enabled) { pendingDeletion = arrayListOf(); onDelete(confirmed) } },
+        confirmText = stringResource(R.string.delete), confirmEnabled = enabled)
 }
 
 /**
