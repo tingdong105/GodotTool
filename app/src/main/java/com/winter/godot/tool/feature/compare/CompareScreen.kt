@@ -178,7 +178,7 @@ private fun ComparisonInputs(state: CompareUiState, onChoose: (Boolean) -> Unit,
 }
 
 /**
- * 带箭头的两行历史条目，长按后平滑展开多选状态。
+ * 显示版本方向与时间的历史条目，长按展开多选状态。
  * @param record 记录摘要。
  * @param selected 当前是否选中。
  * @param selecting 是否处于多选模式。
@@ -202,7 +202,7 @@ private fun HistoryRow(record: ComparisonRecord, selected: Boolean, selecting: B
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
-                Text("${record.oldName} → ${record.newName}", style = Theme.typography.body)
+                Text(ComparisonText.title(record), style = Theme.typography.body)
                 Text(date, style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
             AnimatedVisibility(!selecting, enter = expandHorizontally(spring(dampingRatio = 0.8f, stiffness = 400f)) + fadeIn(),
