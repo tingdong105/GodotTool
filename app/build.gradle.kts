@@ -8,7 +8,7 @@ plugins {
 }
 
 // APP 版本名
-val appVerName = "1.0.0"
+val appVerName = "1.1.0"
 
 // 读取本地签名配置。
 val signingProperties = Properties().apply {
