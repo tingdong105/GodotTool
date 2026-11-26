@@ -13,8 +13,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -44,15 +48,18 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskStatus
@@ -65,6 +72,7 @@ import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareViewModel
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
 import com.winter.godot.tool.feature.compare.RuleGroup
+import com.winter.godot.tool.feature.files.FilePickerPath
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.StorageAccess
@@ -99,6 +107,8 @@ import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.nav.core.NavBackStack
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -212,128 +222,132 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
     BackHandler(enabled = ui.screen == Screen.COMPARE_RESULT || ui.screen == Screen.COMPARE && comparisonUi.selected.isNotEmpty() ||
         activeRuleGroup != null && comparisonUi.ruleList(activeRuleGroup).selectedIds.isNotEmpty() ||
         ui.screen == Screen.TASKS && ui.selectedTasks.isNotEmpty(), onBack = back)
-    ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
-        StartupHost(startup) {
-            ToolNavHost(model.navEntries, ui, back, interceptBack = ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded ||
-                    backupUi.running || backupUi.choosing || backupUi.confirming || backupUi.inspecting) { screen, pageUi ->
-                val ruleGroup = screen.comparisonRuleGroup()
-                val ruleList = ruleGroup?.let(comparisonUi::ruleList)
-                val page: @Composable (Screen) -> Unit = { destination ->
-                    when (destination) {
-                        Screen.HOME -> HomeScreen(pageUi, settings, latestTask, active != null,
-                            model::selectHomeStep, { pendingComparisonExport = false; model.preparePicker("recovery"); model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
-                            {
-                                if (StorageAccess.granted(context)) {
-                                    if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    model.recoverChosen()
-                                } else { pendingComparisonExport = false; model.preparePicker("recovery"); requestFiles() }
-                            }, model::newRecovery,
-                            { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
-                            { path ->
-                                scope.launch {
-                                    if (!withContext(Dispatchers.IO) { isOutputAvailable(path) }) {
-                                        outputCheckVersion++
-                                        Toast.makeText(context, R.string.output_unavailable, Toast.LENGTH_SHORT).show()
-                                        return@launch
+    val blurSupported = toolBlurSupported()
+    CompositionLocalProvider(LocalToolBlurSupported provides blurSupported,
+        LocalToolBlurEnabled provides (settings.blurEnabled && blurSupported)) {
+        ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
+            StartupHost(startup) {
+                ToolNavHost(model.navEntries, ui, back, interceptBack = ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded ||
+                        backupUi.running || backupUi.choosing || backupUi.confirming || backupUi.inspecting) { screen, pageUi ->
+                    val ruleGroup = screen.comparisonRuleGroup()
+                    val ruleList = ruleGroup?.let(comparisonUi::ruleList)
+                    val page: @Composable (Screen) -> Unit = { destination ->
+                        when (destination) {
+                            Screen.HOME -> HomeScreen(pageUi, settings, latestTask, active != null,
+                                model::selectHomeStep, { pendingComparisonExport = false; model.preparePicker("recovery"); model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
+                                {
+                                    if (StorageAccess.granted(context)) {
+                                        if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        model.recoverChosen()
+                                    } else { pendingComparisonExport = false; model.preparePicker("recovery"); requestFiles() }
+                                }, model::newRecovery,
+                                { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
+                                { path ->
+                                    scope.launch {
+                                        if (!withContext(Dispatchers.IO) { isOutputAvailable(path) }) {
+                                            outputCheckVersion++
+                                            Toast.makeText(context, R.string.output_unavailable, Toast.LENGTH_SHORT).show()
+                                            return@launch
+                                        }
+                                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(context.getString(R.string.copy_path), path)))
+                                        Toast.makeText(context, R.string.copy_success, Toast.LENGTH_SHORT).show()
                                     }
-                                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(context.getString(R.string.copy_path), path)))
-                                    Toast.makeText(context, R.string.copy_success, Toast.LENGTH_SHORT).show()
-                                }
-                            }, logs, model::editSnapshot, outputAvailable = availableOutputPath.isNotBlank() && availableOutputPath == outputPath)
-                        Screen.COMPARE -> CompareScreen(comparisonUi, { old ->
-                            pendingComparisonExport = false
-                            model.preparePicker(if (old) "snapshot-old" else "snapshot-new")
-                            model.navigate(Screen.COMPARE)
-                            requestFiles()
-                        }, comparison::start, comparison::cancel, comparison::open, comparison::selectHistory, comparison::deleteSelected, comparison::finishProgress)
-                        Screen.COMPARE_RESULT -> ComparisonResultScreen(comparisonUi, comparison::search, comparison::expandSearch, comparison::filter,
-                            comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
-                                if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
-                            }, back, active = destination == ui.screen)
-                        Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
-                            ui.selectedTasks, ui.deletingTasks, model::selectTask)
-                        Screen.SETTINGS -> SettingsScreen(settings, model::updateSettings,
-                            onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
-                            onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) },
-                            onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) },
-                            backupEnabled = backupEnabled, onBackup = {
-                                if (StorageAccess.granted(context)) backup.chooseBackup()
-                                else { pendingBackupAction = "export"; requestFiles() }
-                            }, onRestore = {
-                                if (StorageAccess.granted(context)) { model.preparePicker("backup-restore"); model.navigate(Screen.FILES) }
-                                else { pendingBackupAction = "restore"; requestFiles() }
-                            })
-                        Screen.COMPARISON_RULES, Screen.COMPARISON_FOCUS_RULES -> {
-                            val group = requireNotNull(destination.comparisonRuleGroup())
-                            ComparisonRulesScreen(comparisonUi, { original, rule -> comparison.saveRule(group, original, rule) },
-                                { comparison.deleteRules(group, it) }, comparison::loadRules, { comparison.selectRule(group, it) }, group)
+                                }, logs, model::editSnapshot, outputAvailable = availableOutputPath.isNotBlank() && availableOutputPath == outputPath)
+                            Screen.COMPARE -> CompareScreen(comparisonUi, { old ->
+                                pendingComparisonExport = false
+                                model.preparePicker(if (old) "snapshot-old" else "snapshot-new")
+                                model.navigate(Screen.COMPARE)
+                                requestFiles()
+                            }, comparison::start, comparison::cancel, comparison::open, comparison::selectHistory, comparison::deleteSelected, comparison::finishProgress)
+                            Screen.COMPARE_RESULT -> ComparisonResultScreen(comparisonUi, comparison::search, comparison::expandSearch, comparison::filter,
+                                comparison::plugins, comparison::loadMore, comparison::wrapLines, comparison::viewMode, {
+                                    if (StorageAccess.granted(context)) comparison.publish() else { pendingComparisonExport = true; requestFiles() }
+                                }, back, active = destination == ui.screen)
+                            Screen.TASKS -> TasksScreen(tasks, active, model::deleteTasks,
+                                ui.selectedTasks, ui.deletingTasks, model::selectTask)
+                            Screen.SETTINGS -> SettingsScreen(settings, model::updateSettings,
+                                onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
+                                onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) },
+                                onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) },
+                                backupEnabled = backupEnabled, onBackup = {
+                                    if (StorageAccess.granted(context)) backup.chooseBackup()
+                                    else { pendingBackupAction = "export"; requestFiles() }
+                                }, onRestore = {
+                                    if (StorageAccess.granted(context)) { model.preparePicker("backup-restore"); model.navigate(Screen.FILES) }
+                                    else { pendingBackupAction = "restore"; requestFiles() }
+                                })
+                            Screen.COMPARISON_RULES, Screen.COMPARISON_FOCUS_RULES -> {
+                                val group = requireNotNull(destination.comparisonRuleGroup())
+                                ComparisonRulesScreen(comparisonUi, { original, rule -> comparison.saveRule(group, original, rule) },
+                                    { comparison.deleteRules(group, it) }, comparison::loadRules, { comparison.selectRule(group, it) }, group)
+                            }
+                            Screen.ABOUT -> AboutScreen(aboutUi, screen == ui.screen, back, {
+                                openAboutLink(AboutViewModel.SOURCE_URL)
+                            }, { model.navigate(Screen.LICENSES) }, onDeveloper = { openAboutLink(AboutViewModel.DEVELOPER_URL) })
+                            Screen.LICENSES -> {
+                                LaunchedEffect(Unit) { about.loadLicenses() }
+                                LicensesScreen(aboutUi, about::loadLicenses)
+                            }
+                            Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
+                                { model.confirmFiles(onSnapshot = { old, path -> comparison.select(old, path) }, onBackup = backup::inspect) }, model::refreshFiles)
                         }
-                        Screen.ABOUT -> AboutScreen(aboutUi, screen == ui.screen, back, {
-                            openAboutLink(AboutViewModel.SOURCE_URL)
-                        }, { model.navigate(Screen.LICENSES) }, onDeveloper = { openAboutLink(AboutViewModel.DEVELOPER_URL) })
-                        Screen.LICENSES -> {
-                            LaunchedEffect(Unit) { about.loadLicenses() }
-                            LicensesScreen(aboutUi, about::loadLicenses)
+                        BackHandler(enabled = screen == ui.screen && screen == Screen.FILES &&
+                            ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath, onBack = model::back)
+                        BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
+                            ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
+                        // 在设置页的弹窗宿主内注册。
+                        if (destination == Screen.SETTINGS && destination == ui.screen) {
+                            BackupDialogs(backupUi, backup::select, backup::review, backup::dismissChoice, backup::revise,
+                                onConfirm = {
+                                    backup.confirm({ model.active.value == null && !model.ui.value.deletingTasks && comparison.backupReady() }) { scopes ->
+                                        if (BackupScope.SETTINGS in scopes) model.reloadSettings()
+                                        comparison.reloadAfterRestore(scopes)
+                                    }
+                                }, onCancel = backup::cancel, onFinished = backup::finish, onNotice = backup::dismissNotice)
                         }
-                        Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
-                            { model.confirmFiles(onSnapshot = { old, path -> comparison.select(old, path) }, onBackup = backup::inspect) }, model::refreshFiles)
-                    }
-                    BackHandler(enabled = screen == ui.screen && screen == Screen.FILES &&
-                        ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath, onBack = model::back)
-                    BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
-                        ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
-                    // 在设置页的弹窗宿主内注册。
-                    if (destination == Screen.SETTINGS && destination == ui.screen) {
-                        BackupDialogs(backupUi, backup::select, backup::review, backup::dismissChoice, backup::revise,
-                            onConfirm = {
-                                backup.confirm({ model.active.value == null && !model.ui.value.deletingTasks && comparison.backupReady() }) { scopes ->
-                                    if (BackupScope.SETTINGS in scopes) model.reloadSettings()
-                                    comparison.reloadAfterRestore(scopes)
-                                }
-                            }, onCancel = backup::cancel, onFinished = backup::finish, onNotice = backup::dismissNotice)
-                    }
-                    if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false; pendingComparisonExport = false; pendingBackupAction = null }) {
-                        Text(stringResource(R.string.storage_permission_detail))
-                        PrimaryButton(stringResource(R.string.authorize), { permissionExplanation = false; requestFiles() }, Modifier.fillMaxWidth())
-                    }
-                    if (destination == ui.screen) ui.notice?.let { notice -> ToolDialog(stringResource(R.string.notice), model::dismissNotice) {
-                        Text(stringResource(notice))
-                        if (ui.noticeDetail.isNotEmpty()) Text(ui.noticeDetail, style = Theme.typography.code)
-                        PrimaryButton(stringResource(R.string.confirm), model::dismissNotice, Modifier.fillMaxWidth())
-                    } }
-                    if (destination == Screen.ABOUT && destination == ui.screen && aboutLinkFailed) {
-                        ToolDialog(stringResource(R.string.notice), { aboutLinkFailed = false }) {
-                            Text(stringResource(R.string.about_link_failed))
-                            PrimaryButton(stringResource(R.string.confirm), { aboutLinkFailed = false }, Modifier.fillMaxWidth())
+                        if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false; pendingComparisonExport = false; pendingBackupAction = null }) {
+                            Text(stringResource(R.string.storage_permission_detail))
+                            PrimaryButton(stringResource(R.string.authorize), { permissionExplanation = false; requestFiles() }, Modifier.fillMaxWidth())
+                        }
+                        if (destination == ui.screen) ui.notice?.let { notice -> ToolDialog(stringResource(R.string.notice), model::dismissNotice) {
+                            Text(stringResource(notice))
+                            if (ui.noticeDetail.isNotEmpty()) Text(ui.noticeDetail, style = Theme.typography.code)
+                            PrimaryButton(stringResource(R.string.confirm), model::dismissNotice, Modifier.fillMaxWidth())
+                        } }
+                        if (destination == Screen.ABOUT && destination == ui.screen && aboutLinkFailed) {
+                            ToolDialog(stringResource(R.string.notice), { aboutLinkFailed = false }) {
+                                Text(stringResource(R.string.about_link_failed))
+                                PrimaryButton(stringResource(R.string.confirm), { aboutLinkFailed = false }, Modifier.fillMaxWidth())
+                            }
                         }
                     }
+                    if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, settings.floatingBottomBar, settings.liquidGlass, page)
+                    else if (screen == Screen.COMPARE_RESULT || screen == Screen.ABOUT) page(screen)
+                    else ToolScaffold(screen, model::navigate, { dispatcher?.onBackPressed() ?: back() },
+                        titleOverride = when {
+                            screen == Screen.TASKS && ui.selectedTasks.isNotEmpty() -> stringResource(R.string.tasks_selected, ui.selectedTasks.size)
+                            ruleList != null && ruleList.selectedIds.isNotEmpty() -> stringResource(R.string.tasks_selected, ruleList.selectedIds.size)
+                            else -> null
+                        }, actions = {
+                        if (screen == Screen.TASKS) {
+                            val selectableCount = tasks.count { it.status != TaskStatus.RUNNING && it.id != active }
+                            if (ui.selectedTasks.isNotEmpty()) {
+                                TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
+                            } else {
+                                TasksClearButton(active == null && !ui.deletingTasks && !backupBusy && selectableCount > 0, model::clearFinished)
+                            }
+                        }
+                        if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
+                        if (ruleGroup != null && ruleList != null) {
+                            val enabled = !comparisonUi.rulesLoading && !comparisonUi.rulesLoadFailed && !comparisonUi.rulesSaving
+                            if (ruleList.selectedIds.isNotEmpty()) TasksSelectAllButton(
+                                ruleList.selectedIds.size == comparisonUi.rules.count { it.exclude == ruleGroup.exclude }, enabled,
+                                { comparison.selectAllRules(ruleGroup) })
+                            ComparisonRulesSortButton(ruleList.sort, ruleList.reversed, enabled,
+                                { order, reversed -> comparison.sortRules(ruleGroup, order, reversed) })
+                        }
+                    }, topBarContent = { if (screen == Screen.FILES) FilePickerPath(pageUi.browserPath) }) { page(screen) }
                 }
-                if (screen.isRoot()) RootTabs(screen, ui.screen == screen, model::navigate, settings.floatingBottomBar, settings.liquidGlass, page)
-                else if (screen == Screen.COMPARE_RESULT || screen == Screen.ABOUT) page(screen)
-                else ToolScaffold(screen, model::navigate, { dispatcher?.onBackPressed() ?: back() },
-                    titleOverride = when {
-                        screen == Screen.TASKS && ui.selectedTasks.isNotEmpty() -> stringResource(R.string.tasks_selected, ui.selectedTasks.size)
-                        ruleList != null && ruleList.selectedIds.isNotEmpty() -> stringResource(R.string.tasks_selected, ruleList.selectedIds.size)
-                        else -> null
-                    }, actions = {
-                    if (screen == Screen.TASKS) {
-                        val selectableCount = tasks.count { it.status != TaskStatus.RUNNING && it.id != active }
-                        if (ui.selectedTasks.isNotEmpty()) {
-                            TasksSelectAllButton(ui.selectedTasks.size == selectableCount, !ui.deletingTasks, model::selectAllTasks)
-                        } else {
-                            TasksClearButton(active == null && !ui.deletingTasks && !backupBusy && selectableCount > 0, model::clearFinished)
-                        }
-                    }
-                    if (screen == Screen.FILES) FileSortButton(pageUi.browserSort, pageUi.browserReversed, pageUi.browserDirectoryOnly, model::sortFiles, enabled = !pageUi.loading)
-                    if (ruleGroup != null && ruleList != null) {
-                        val enabled = !comparisonUi.rulesLoading && !comparisonUi.rulesLoadFailed && !comparisonUi.rulesSaving
-                        if (ruleList.selectedIds.isNotEmpty()) TasksSelectAllButton(
-                            ruleList.selectedIds.size == comparisonUi.rules.count { it.exclude == ruleGroup.exclude }, enabled,
-                            { comparison.selectAllRules(ruleGroup) })
-                        ComparisonRulesSortButton(ruleList.sort, ruleList.reversed, enabled,
-                            { order, reversed -> comparison.sortRules(ruleGroup, order, reversed) })
-                    }
-                }) { page(screen) }
             }
         }
     }
@@ -376,10 +390,12 @@ fun ToolNavHost(backStack: NavBackStack, ui: ToolUiState, onBack: () -> Unit, in
  * @param actions 二级页面顶栏操作。
  * @param titleOverride 多选等临时状态的顶栏标题。
  * @param floatingNavigation 是否将底部避让交由一级列表处理。
+ * @param topBarContent 标题下方固定的路径等控件。
  */
 @Composable
 fun ToolScaffold(screen: Screen, onNavigate: (Screen) -> Unit = {}, onBack: () -> Unit = {}, showNavigation: Boolean = true,
-    titleOverride: String? = null, actions: @Composable () -> Unit = {}, floatingNavigation: Boolean = false, content: @Composable () -> Unit) {
+    titleOverride: String? = null, actions: @Composable () -> Unit = {}, floatingNavigation: Boolean = false,
+    topBarContent: @Composable () -> Unit = {}, content: @Composable () -> Unit) {
     val root = screen.isRoot()
     val title = titleOverride ?: when (screen) {
         Screen.HOME -> stringResource(R.string.app_name)
@@ -396,6 +412,8 @@ fun ToolScaffold(screen: Screen, onNavigate: (Screen) -> Unit = {}, onBack: () -
     val pages = rememberSaveableStateHolder()
     val tablet = ToolDevice.isPad
     val tabletLandscape = tablet && ToolDevice.isLandscape
+    val direction = LocalLayoutDirection.current
+    val backdrop = rememberToolBarBackdrop()
     val pageInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout)
     val scaffold: @Composable (Boolean) -> Unit = { wide ->
         CompositionLocalProvider(LocalWideContent provides wide) {
@@ -406,27 +424,38 @@ fun ToolScaffold(screen: Screen, onNavigate: (Screen) -> Unit = {}, onBack: () -
                     else -> Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
                 }
                 Scaffold(modifier = Modifier.fillMaxSize().imePadding().then(if (root) Modifier.nestedScroll(scroll.nestedScrollConnection) else Modifier), topBar = {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                        if (root) TopAppBar(title, modifier = width, scrollBehavior = scroll, actions = {
+                    Column(Modifier.fillMaxWidth().toolBarBackground(backdrop), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (root) TopAppBar(title, modifier = width, color = Color.Transparent, scrollBehavior = scroll, actions = {
                             if (screen == Screen.HOME) IconButton(onClick = { onNavigate(Screen.TASKS) }, modifier = Modifier.size(Theme.sizes.largeIcon)) {
                                 ToolIcon(R.drawable.ic_tasks, description = stringResource(R.string.history))
                             }
                         })
-                        else SmallTopAppBar(title = title, modifier = width, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
+                        else SmallTopAppBar(title = title, modifier = width, color = Color.Transparent,
+                            navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
                             actions = { actions() }, navigationIcon = {
                             IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) { ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back)) }
                         })
+                        Box(width) { topBarContent() }
                     }
                 }, contentWindowInsets = if (root && floatingNavigation)
                     pageInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
                     else pageInsets,
                 bottomBar = {
-                    if (root && showNavigation) ToolBottomNavigation(screen, onNavigate)
+                    if (root && showNavigation) ToolBottomNavigation(screen, onNavigate, backdrop)
                 }) { padding ->
-                    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {
-                        Box(width.fillMaxHeight()) {
-                            if (root || screen == Screen.FILES || screen == Screen.TASKS) pages.SaveableStateProvider(screen.name) { content() }
-                            else content()
+                    val overlayBottom = backdrop != null && root && showNavigation
+                    val outside = if (backdrop == null) padding else PaddingValues(
+                        start = padding.calculateStartPadding(direction), end = padding.calculateEndPadding(direction),
+                        bottom = if (overlayBottom) 0.dp else padding.calculateBottomPadding())
+                    val inside = if (backdrop == null) PaddingValues(0.dp) else PaddingValues(
+                        top = padding.calculateTopPadding(), bottom = if (overlayBottom) padding.calculateBottomPadding() else 0.dp)
+                    Box(Modifier.fillMaxSize().padding(outside).consumeWindowInsets(padding)
+                        .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier), contentAlignment = Alignment.TopCenter) {
+                        CompositionLocalProvider(LocalToolContentPadding provides inside) {
+                            Box(width.fillMaxHeight()) {
+                                if (root || screen == Screen.FILES || screen == Screen.TASKS) pages.SaveableStateProvider(screen.name) { content() }
+                                else content()
+                            }
                         }
                     }
                 }
@@ -443,12 +472,13 @@ fun ToolScaffold(screen: Screen, onNavigate: (Screen) -> Unit = {}, onBack: () -
 
 /**
  * 首页与设置共用的官方底部导航栏。
+ * @param backdrop 普通导航栏的页面采样层。
  * @param screen 当前标签。
  * @param onNavigate 标签点击。
  */
 @Composable
-fun ToolBottomNavigation(screen: Screen, onNavigate: (Screen) -> Unit) {
-    NavigationBar {
+fun ToolBottomNavigation(screen: Screen, onNavigate: (Screen) -> Unit, backdrop: LayerBackdrop? = null) {
+    NavigationBar(modifier = Modifier.toolBarBackground(backdrop), color = Color.Transparent, showDivider = backdrop == null) {
         NavigationBarItem(selected = screen == Screen.HOME, onClick = { onNavigate(Screen.HOME) },
             icon = toolIconVector(R.drawable.ic_workbench), label = stringResource(R.string.home))
         NavigationBarItem(selected = screen == Screen.COMPARE, onClick = { onNavigate(Screen.COMPARE) },

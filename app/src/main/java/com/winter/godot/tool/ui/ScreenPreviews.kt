@@ -2,6 +2,7 @@ package com.winter.godot.tool.ui
 
 import android.content.res.Configuration
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,7 @@ import com.winter.godot.tool.feature.compare.RuleSort
 import com.winter.godot.tool.feature.compare.RuleTarget
 import com.winter.godot.tool.feature.compare.SnapshotHeader
 import com.winter.godot.tool.feature.files.BrowserFile
+import com.winter.godot.tool.feature.files.FilePickerPath
 import com.winter.godot.tool.feature.files.FilePickerScreen
 import com.winter.godot.tool.feature.files.FileSortButton
 import com.winter.godot.tool.feature.files.sortBrowserFiles
@@ -221,26 +223,34 @@ private fun FloatingCompareTabsPreview() { RootTabsPreviewContent(true, false, i
 @Composable
 private fun FloatingSettingsTabsPreview() { RootTabsPreviewContent(true, false, initialScreen = Screen.SETTINGS) }
 
+/** 模糊请求在手机、平板及分屏预览中的安全回退。 */
+@ScreenPreviews
+@Composable
+private fun BlurTabsPreview() { RootTabsPreviewContent(false, false, initialScreen = Screen.SETTINGS, blur = true) }
+
 /**
  * 为三种导航模式提供统一预览内容。
  * @param floating 是否使用悬浮底栏。
  * @param glass 是否使用液态玻璃。
  * @param processing 是否展示处理步骤与右侧日志。
  * @param initialScreen 初始导航页面。
+ * @param blur 是否请求应用栏模糊。
  */
 @Composable
-private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing: Boolean = false, initialScreen: Screen = Screen.HOME) {
+private fun RootTabsPreviewContent(floating: Boolean, glass: Boolean, processing: Boolean = false, initialScreen: Screen = Screen.HOME, blur: Boolean = false) {
     var screen by remember { mutableStateOf(initialScreen) }
-    val settings = ToolSettings(floatingBottomBar = floating, liquidGlass = glass)
+    val settings = ToolSettings(floatingBottomBar = floating, liquidGlass = glass, blurEnabled = blur)
     GodotToolTheme {
-        RootTabs(screen, true, { screen = it }, floating, glass) { page ->
-            if (page == Screen.HOME) HomeScreen(ToolUiState(homeStep = if (processing) 3 else 1), ToolSettings(),
-                if (processing) exampleTask.copy(status = TaskStatus.RUNNING, stage = "recover", overallProgress = 0.62f) else exampleTask,
-                processing, {}, {}, {}, {}, {}, {}, {}, {}, logs = if (processing) (1..30).map {
-                    com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件 scripts/components/player_controller_$it.gd")
-                } else emptyList())
-            else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {})
-            else SettingsScreen(settings, {})
+        CompositionLocalProvider(LocalToolBlurEnabled provides (blur && toolBlurSupported())) {
+            RootTabs(screen, true, { screen = it }, floating, glass) { page ->
+                if (page == Screen.HOME) HomeScreen(ToolUiState(homeStep = if (processing) 3 else 1), ToolSettings(),
+                    if (processing) exampleTask.copy(status = TaskStatus.RUNNING, stage = "recover", overallProgress = 0.62f) else exampleTask,
+                    processing, {}, {}, {}, {}, {}, {}, {}, {}, logs = if (processing) (1..30).map {
+                        com.winter.godot.tool.data.TaskLogLine("recover", "正在恢复项目文件 scripts/components/player_controller_$it.gd")
+                    } else emptyList())
+                else if (page == Screen.COMPARE) CompareScreen(CompareUiState(), {}, {}, {}, {}, {}, {})
+                else SettingsScreen(settings, {})
+            }
         }
     }
 }
@@ -374,7 +384,26 @@ private fun FilesPreview() {
                 state = state.copy(browserSort = order, browserReversed = reversed, browserDirectoryOnly = directoryOnly,
                     browserFiles = sortBrowserFiles(state.browserFiles, order, reversed))
             })
-        }) { FilePickerScreen(state, true, {}, { state = state.copy(chosenFiles = setOf(it)) }, {}) }
+        }, topBarContent = { FilePickerPath(state.browserPath) }) { FilePickerScreen(state, true, {}, { state = state.copy(chosenFiles = setOf(it)) }, {}) }
+    }
+}
+
+/** 长路径在手机横屏、平板和小窗口中的明暗预览。 */
+@ScreenPreviews
+@Preview(name = "长路径·手机横屏·浅色", widthDp = 900, heightDp = 360, showBackground = true)
+@Preview(name = "长路径·手机横屏·暗色", widthDp = 900, heightDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "长路径·小窗口·浅色", widthDp = 480, heightDp = 360, showBackground = true)
+@Preview(name = "长路径·小窗口·暗色", widthDp = 480, heightDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+private fun FilesLongPathPreview() {
+    val path = "/storage/emulated/0/" + (1..24).joinToString("/") { "很长的项目目录名称_$it" }
+    val file = "$path/示例项目.apk"
+    val state = ToolUiState(screen = Screen.FILES, browserPath = path, chosenFiles = setOf(file),
+        browserFiles = listOf(BrowserFile("示例项目.apk", file, false, 100835140, 1795507200000)))
+    GodotToolTheme {
+        ToolScaffold(Screen.FILES, topBarContent = { FilePickerPath(path) }) {
+            FilePickerScreen(state, true, {}, {}, {})
+        }
     }
 }
 

@@ -84,6 +84,7 @@ class ToolRepository(private val context: Context) {
         kv.encode("theme", value.theme.name)
         kv.encode("floating-bottom-bar", value.floatingBottomBar)
         kv.encode("liquid-glass", value.liquidGlass)
+        kv.encode("enable-blur", value.blurEnabled)
         kv.encode("scripts", value.scripts)
         kv.encode("scenes", value.scenes)
         kv.encode("assets", value.assets)
@@ -392,7 +393,8 @@ class ToolRepository(private val context: Context) {
             kv.decodeBool("scripts", defaults.scripts), kv.decodeBool("scenes", defaults.scenes), kv.decodeBool("assets", defaults.assets),
             kv.decodeBool("plugins", defaults.plugins), kv.decodeBool("project-config", defaults.config), kv.decodeBool("keep-raw", defaults.keepRaw), SnapshotOptions(kv.decodeBool("snapshot", false)),
             floatingBottomBar = kv.decodeBool("floating-bottom-bar", defaults.floatingBottomBar),
-            liquidGlass = kv.decodeBool("liquid-glass", defaults.liquidGlass))
+            liquidGlass = kv.decodeBool("liquid-glass", defaults.liquidGlass),
+            blurEnabled = kv.decodeBool("enable-blur", defaults.blurEnabled))
     }
 
     /**

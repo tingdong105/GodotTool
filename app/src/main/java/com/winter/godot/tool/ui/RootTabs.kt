@@ -1,6 +1,5 @@
 package com.winter.godot.tool.ui
 
-import android.os.Build
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
@@ -71,9 +70,7 @@ import top.yukonga.miuix.kmp.basic.NavigationRail
 import top.yukonga.miuix.kmp.basic.NavigationRailDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.nav.runtime.NavProgrammaticEasing
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
@@ -103,10 +100,10 @@ fun RootTabs(screen: Screen, active: Boolean, onNavigate: (Screen) -> Unit,
         val rail = !floating && tablet && safeWidth >= Theme.sizes.navigationBreakpoint
         val tabs = remember { listOf(Screen.HOME, Screen.COMPARE, Screen.SETTINGS) }
         val selected = tabs.indexOf(screen).coerceAtLeast(0)
-        val glassEnabled = floating && liquidGlass && Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
-        val backdrop = if (glassEnabled) rememberLayerBackdrop() else null
+        val glassEnabled = floating && liquidGlass && toolBlurSupported()
+        val blurNavigation = !floating && !rail && LocalToolBlurEnabled.current
+        val backdrop = rememberToolBarBackdrop(glassEnabled || blurNavigation)
         val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val bottomInset = if (floating) 76.dp + navigationBottom else 0.dp
         val navigationItems = listOf(
             NavigationItem(stringResource(R.string.home), toolIconVector(R.drawable.ic_workbench)),
             NavigationItem(stringResource(R.string.compare), toolIconVector(R.drawable.ic_compare)),
@@ -177,11 +174,12 @@ fun RootTabs(screen: Screen, active: Boolean, onNavigate: (Screen) -> Unit,
                             labelContent = { item, _ -> Text(item.label, fontSize = 11.sp, lineHeight = 14.sp,
                                 maxLines = 1, softWrap = false, overflow = TextOverflow.Visible) })
                     }
-                } else if (!rail) ToolBottomNavigation(tabs[requested], select)
+                } else if (!rail) ToolBottomNavigation(tabs[requested], select, backdrop)
             }) { padding ->
-                val pagePadding = if (floating) PaddingValues(
+                val pagePadding = if (floating || blurNavigation) PaddingValues(
                     start = padding.calculateStartPadding(layoutDirection), end = padding.calculateEndPadding(layoutDirection),
                     top = padding.calculateTopPadding()) else padding
+                val bottomInset = if (floating) 76.dp + navigationBottom else if (blurNavigation) padding.calculateBottomPadding() else 0.dp
                 CompositionLocalProvider(LocalRootBottomInset provides bottomInset) {
                     HorizontalPager(state = pager, modifier = Modifier.fillMaxSize().padding(pagePadding).consumeWindowInsets(pagePadding)
                         .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
@@ -193,7 +191,7 @@ fun RootTabs(screen: Screen, active: Boolean, onNavigate: (Screen) -> Unit,
                             ToolScaffold(tab, onNavigate = { target ->
                                 navigate(tab)
                                 navigate(target)
-                            }, showNavigation = false, floatingNavigation = floating) { content(tab) }
+                            }, showNavigation = false, floatingNavigation = floating || blurNavigation) { content(tab) }
                         }
                     }
                 }

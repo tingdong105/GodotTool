@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -36,6 +40,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -72,18 +77,22 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import com.winter.godot.tool.R
 import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.components.ToolIcon
+import com.winter.godot.tool.ui.rememberToolBarBackdrop
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolBarBackground
 import kotlinx.coroutines.flow.first
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -101,6 +110,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.VerticalScrollBar
 import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Search
@@ -136,6 +146,8 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
     val selections = remember(state.viewingId) { ResultSelections() }
     val title = state.record?.let(ComparisonText::title) ?: stringResource(R.string.compare_result)
     val tablet = ToolDevice.isPad
+    val direction = LocalLayoutDirection.current
+    val backdrop = rememberToolBarBackdrop()
     val contentWidth = if (tablet) Modifier.fillMaxWidth() else Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth()
     PredictiveBackHandler(enabled = active && state.searchExpanded, onProgress = { events -> events.collect {} },
         onCommit = { focus.clearFocus(); onSearchExpanded(false) }, onCancel = {})
@@ -154,10 +166,11 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
             onLoadMore()
         }
     }
-    Scaffold(modifier = Modifier.fillMaxSize().imePadding().dismissTextSelection(selections),
+    Scaffold(modifier = Modifier.fillMaxSize().imePadding().dismissTextSelection(selections)
+        .then(if (tablet) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)) else Modifier),
         contentWindowInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout), topBar = {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-            SmallTopAppBar(title = title, modifier = contentWidth, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
+        Column(Modifier.fillMaxWidth().toolBarBackground(backdrop), horizontalAlignment = Alignment.CenterHorizontally) {
+            SmallTopAppBar(title = title, color = Color.Transparent, modifier = contentWidth, navigationIconPadding = Theme.spacing.xs, actionIconPadding = Theme.spacing.xs,
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.size(Theme.sizes.largeIcon)) {
                         ToolIcon(R.drawable.ic_back, description = stringResource(R.string.back))
@@ -174,9 +187,14 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                             modifier = Modifier.fillMaxWidth().padding(horizontal = Theme.spacing.md, vertical = Theme.spacing.sm))
                     }
                 })
+            Box(contentWidth) { ComparisonCategories(state.filter, onFilter) }
         }
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {
+        val outside = if (backdrop == null) padding else PaddingValues(
+            start = padding.calculateStartPadding(direction), end = padding.calculateEndPadding(direction), bottom = padding.calculateBottomPadding())
+        val readerTop = if (backdrop != null) padding.calculateTopPadding() else 0.dp
+        Box(Modifier.fillMaxSize().padding(outside).consumeWindowInsets(padding)
+            .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier), contentAlignment = Alignment.TopCenter) {
             Column(contentWidth.fillMaxSize().pointerInput(state.viewingId) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -192,7 +210,6 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                     } while (event.changes.any { it.pressed })
                 }
             }) {
-                ComparisonCategories(state.filter, onFilter)
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     val density = LocalDensity.current
                     val viewportWidth = maxWidth
@@ -210,7 +227,8 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                     if (state.opening || state.filtering) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     } else Box(Modifier.fillMaxSize().then(if (state.wrapLines) Modifier else Modifier.horizontalScroll(horizontal))) {
-                        LazyColumn(Modifier.width(readerWidth).fillMaxHeight(), state = list, contentPadding = PaddingValues(horizontal = Theme.spacing.lg, vertical = Theme.spacing.md),
+                        LazyColumn(Modifier.width(readerWidth).fillMaxHeight(), state = list, contentPadding = PaddingValues(start = Theme.spacing.lg, end = Theme.spacing.lg,
+                            top = Theme.spacing.md + readerTop, bottom = Theme.spacing.md),
                             verticalArrangement = Arrangement.spacedBy(Theme.spacing.xs)) {
                             state.record?.let { record -> item(key = "summary") {
                                 Column(Modifier.width(textViewportWidth), verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
@@ -270,7 +288,7 @@ fun ComparisonResultScreen(state: CompareUiState, onSearch: (String) -> Unit, on
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().drawWithContent {
                                 translate(left = touchPadding.toPx()) { this@drawWithContent.drawContent() }
                             },
-                            trackPadding = PaddingValues(vertical = Theme.spacing.md),
+                            trackPadding = PaddingValues(top = Theme.spacing.md + readerTop, bottom = Theme.spacing.md),
                             colors = scrollBarColors,
                             endPadding = ScrollBarDefaults.EndPadding + touchPadding,
                         )

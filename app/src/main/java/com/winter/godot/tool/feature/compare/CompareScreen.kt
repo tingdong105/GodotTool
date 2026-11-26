@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.state.ToggleableState
 import com.winter.godot.tool.R
 import com.winter.godot.tool.ui.LocalRootBottomInset
+import com.winter.godot.tool.ui.LocalToolContentPadding
 import com.winter.godot.tool.ui.LocalWideContent
 import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.ConfirmDialog
@@ -53,6 +54,7 @@ import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -108,7 +110,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
     val historyPane: @Composable (Modifier, Boolean) -> Unit = { modifier, showInputs ->
         Box(modifier) {
             LazyColumn(Modifier.fillMaxSize(), state = historyList,
-                contentPadding = PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.md, bottom = bottomPadding + navigationInset),
+                contentPadding = toolContentPadding(PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.md, bottom = bottomPadding + navigationInset)),
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 if (showInputs) {
                     item(key = "inputs") { ComparisonInputs(state, onChoose, onStart) }
@@ -117,7 +119,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
                 history()
             }
             ComparisonDeleteAction(selecting, { if (state.selected.isNotEmpty()) deleting = true },
-                Modifier.align(Alignment.BottomEnd).padding(bottom = navigationInset).padding(Theme.spacing.lg))
+                Modifier.align(Alignment.BottomEnd).padding(bottom = navigationInset + LocalToolContentPadding.current.calculateBottomPadding()).padding(Theme.spacing.lg))
         }
     }
     if (ToolDevice.isPhone) {
@@ -125,7 +127,7 @@ fun CompareScreen(state: CompareUiState, onChoose: (Boolean) -> Unit, onStart: (
     } else {
         Row(Modifier.fillMaxSize()) {
             if (wide) Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(inputScroll)
-                .padding(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.sm, bottom = Theme.spacing.md),
+                .padding(toolContentPadding(PaddingValues(start = Theme.spacing.md, top = Theme.spacing.md, end = Theme.spacing.sm, bottom = Theme.spacing.md + navigationInset))),
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 ComparisonInputs(state, onChoose, onStart)
                 state.error?.let { error -> Text(stringResource(error), color = MiuixTheme.colorScheme.error) }

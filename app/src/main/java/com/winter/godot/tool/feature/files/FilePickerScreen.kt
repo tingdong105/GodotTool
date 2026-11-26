@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -47,15 +49,17 @@ import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.winter.godot.tool.R
+import com.winter.godot.tool.ui.LocalToolContentPadding
 import com.winter.godot.tool.ui.ToolUiState
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.LoadingContent
 import com.winter.godot.tool.ui.components.PrimaryButton
-import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.components.fileSize
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.DropdownImpl
@@ -89,7 +93,6 @@ import java.util.Locale
 @Composable
 fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) -> Unit, onChoose: (String) -> Unit, onConfirm: () -> Unit,
     onRefresh: () -> Unit = {}) {
-    val root = StorageAccess.root().absolutePath
     val directories = rememberSaveableStateHolder()
     val directory = remember(state.browserPath, state.browserFiles) { state.browserPath to state.browserFiles }
     var showLoading by remember { mutableStateOf(false) }
@@ -113,17 +116,15 @@ fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) ->
                         val interactive = path == state.browserPath && !state.loading
                         val refreshing = state.browserRefreshing && path == state.browserPath
                         val refreshState = rememberPullToRefreshState()
-                        val relative = path.removePrefix(root).trim('/')
-                        SectionTitle(listOf(stringResource(R.string.shared_storage), relative).filter { it.isNotEmpty() }.joinToString(" / "))
                         PullToRefreshBox(isRefreshing = refreshing, state = refreshState,
                             onRefresh = { if (interactive && path.isNotEmpty()) onRefresh() }, modifier = Modifier.weight(1f),
                             enabled = path == state.browserPath && path.isNotEmpty() && (!state.loading || refreshing),
                             indicator = {
                                 PullToRefreshDefaults.Indicator(state = refreshState, isRefreshing = refreshing,
-                                    modifier = Modifier.align(Alignment.TopCenter), containerColor = MiuixTheme.colorScheme.surface,
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = LocalToolContentPadding.current.calculateTopPadding()), containerColor = MiuixTheme.colorScheme.surface,
                                     color = MiuixTheme.colorScheme.primary)
                             }) {
-                            LazyColumn(Modifier.fillMaxSize().selectableGroup(), contentPadding = PaddingValues(bottom = Theme.spacing.sm),
+                            LazyColumn(Modifier.fillMaxSize().selectableGroup(), contentPadding = toolContentPadding(PaddingValues(bottom = Theme.spacing.sm)),
                                 overscrollEffect = null) {
                                 if (files.isEmpty() && path.isNotEmpty() && (!state.loading || state.browserRefreshing)) {
                                     item(key = "empty") { EmptyContent(stringResource(R.string.empty_directory)) }
@@ -162,6 +163,20 @@ fun FilePickerScreen(state: ToolUiState, enabled: Boolean, onBrowse: (String) ->
             Modifier.fillMaxWidth().padding(Theme.spacing.md),
             enabled = enabled && state.chosenFiles.size == 1 && !state.loading, icon = MiuixIcons.Basic.Check)
     }
+}
+
+/**
+ * 固定显示最多两行路径并拦截点击。
+ * @param path 当前浏览目录的绝对路径。
+ */
+@Composable
+fun FilePickerPath(path: String) {
+    val relative = path.removePrefix(StorageAccess.root().absolutePath).trim('/')
+    Text(text = listOf(stringResource(R.string.shared_storage), relative).filter { it.isNotEmpty() }.joinToString(" / "),
+        modifier = Modifier.fillMaxWidth().pointerInput(Unit) { detectTapGestures { } }
+            .padding(horizontal = Theme.spacing.lg, vertical = Theme.spacing.sm),
+        style = MiuixTheme.textStyles.subtitle, color = MiuixTheme.colorScheme.onBackgroundVariant,
+        maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
 /**

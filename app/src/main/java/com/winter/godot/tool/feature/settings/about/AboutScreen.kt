@@ -41,12 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -61,7 +59,9 @@ import androidx.lifecycle.compose.currentStateAsState
 import com.winter.godot.tool.R
 import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.ToolIcon
+import com.winter.godot.tool.ui.rememberToolBarBackdrop
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolBarBackground
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -74,14 +74,11 @@ import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurBlendMode
 import top.yukonga.miuix.kmp.blur.BlurColors
-import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -128,19 +125,15 @@ fun AboutScreen(state: AboutUiState, active: Boolean, onBack: () -> Unit, onSour
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val playing = active && lifecycle.isAtLeast(Lifecycle.State.RESUMED) && progress < 1f
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
-    val supported = isRuntimeShaderSupported() && !LocalInspectionMode.current
-    val topBackdrop = if (supported) rememberLayerBackdrop() else null
-    val surface = MiuixTheme.colorScheme.surface
-    val topColors = BlurDefaults.blurColors(blendColors = listOf(BlendColorEntry(surface.copy(alpha = 0.8f))))
+    val topBackdrop = rememberToolBarBackdrop()
     val tablet = ToolDevice.isPad
     Scaffold(modifier = Modifier.fillMaxSize().then(if (tablet) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)) else Modifier),
         contentWindowInsets = if (tablet) WindowInsets.safeDrawing else WindowInsets.systemBars.union(WindowInsets.displayCutout), topBar = {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxWidth().then(if (progress == 1f) Modifier.toolBarBackground(topBackdrop) else Modifier),
+            contentAlignment = Alignment.TopCenter) {
             SmallTopAppBar(title = stringResource(R.string.about_software),
-                modifier = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth().then(
-                    if (topBackdrop != null && progress == 1f) Modifier.textureBlur(topBackdrop, RectangleShape,
-                        colors = topColors) else Modifier),
-                color = if (topBackdrop != null || progress < 1f) Color.Transparent else surface,
+                modifier = Modifier.widthIn(max = Theme.sizes.contentMax).fillMaxWidth(),
+                color = Color.Transparent,
                 titleColor = MiuixTheme.colorScheme.onSurface.copy(alpha = progress),
                 navigationIconPadding = Theme.spacing.xs,
                 navigationIcon = {

@@ -15,8 +15,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.winter.godot.tool.R
+import com.winter.godot.tool.ui.LocalToolContentPadding
 import com.winter.godot.tool.ui.components.LoadingContent
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -29,16 +31,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun LicensesScreen(state: AboutUiState, onRetry: () -> Unit) {
     when {
-        state.licenseFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        state.licenseFailed -> Box(Modifier.fillMaxSize().padding(LocalToolContentPadding.current), contentAlignment = Alignment.Center) {
             Column(Modifier.padding(Theme.spacing.xl), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 Text(stringResource(R.string.about_licenses_failed), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 TextButton(stringResource(R.string.retry), onRetry)
             }
         }
-        state.licenses == null -> LoadingContent()
+        state.licenses == null -> Box(Modifier.fillMaxSize().padding(LocalToolContentPadding.current)) { LoadingContent() }
         else -> {
-            LazyColumn(modifier = Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(Theme.spacing.xl)) {
+            LazyColumn(modifier = Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = toolContentPadding(PaddingValues(Theme.spacing.xl))) {
                 itemsIndexed(state.licenses, key = { index, _ -> index }) { _, text ->
                     SelectionContainer {
                         Text(text, style = Theme.typography.detail, color = MiuixTheme.colorScheme.onSurface)

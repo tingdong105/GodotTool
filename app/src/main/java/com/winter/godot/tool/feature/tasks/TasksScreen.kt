@@ -47,6 +47,7 @@ import androidx.compose.ui.state.ToggleableState
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.ui.LocalToolContentPadding
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
@@ -57,6 +58,7 @@ import com.winter.godot.tool.ui.components.errorResource
 import com.winter.godot.tool.ui.components.stageResource
 import com.winter.godot.tool.ui.components.statusResource
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -102,8 +104,8 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onDelete: (Set<String>
         if (selecting) FloatingActionButtonDefaults.MinHeight + Theme.spacing.xxl else Theme.spacing.md,
         spring(dampingRatio = 0.9f, stiffness = 300f), label = "tasksBottomPadding")
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-            top = Theme.spacing.sm, bottom = bottomPadding), verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = toolContentPadding(PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = bottomPadding)), verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
             if (tasks.isEmpty()) item(key = "empty") {
                 EmptyContent(stringResource(R.string.no_tasks), stringResource(R.string.no_tasks_detail), R.drawable.ic_tasks)
             }
@@ -122,7 +124,7 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onDelete: (Set<String>
                 }
             }
         }
-        AnimatedVisibility(selecting, modifier = Modifier.align(Alignment.BottomEnd).padding(Theme.spacing.lg),
+        AnimatedVisibility(selecting, modifier = Modifier.align(Alignment.BottomEnd).padding(LocalToolContentPadding.current).padding(Theme.spacing.lg),
             enter = slideInVertically(spring(dampingRatio = 0.6f, stiffness = 260f)) { it * 2 } + fadeIn(tween(180)),
             exit = slideOutVertically(spring(dampingRatio = 0.75f, stiffness = 300f)) { it * 2 } + fadeOut(tween(180))) {
             FloatingActionButton(onClick = { if (!busy && selecting) pendingDeletion = ArrayList(selection) },

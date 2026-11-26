@@ -39,7 +39,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskLogLine
@@ -59,6 +58,7 @@ import com.winter.godot.tool.ui.components.ToolIcon
 import com.winter.godot.tool.ui.components.statusResource
 import com.winter.godot.tool.ui.rememberMovableToolContent
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -202,19 +202,19 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
             }
         }
     }
-    val padding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-        top = Theme.spacing.sm, bottom = Theme.spacing.sm + LocalRootBottomInset.current)
-    Row(Modifier.fillMaxSize().then(if (wide) Modifier.padding(padding) else Modifier),
+    val padding = toolContentPadding(PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+        top = Theme.spacing.sm, bottom = Theme.spacing.sm + LocalRootBottomInset.current))
+    Row(Modifier.fillMaxSize().then(if (wide) Modifier.padding(horizontal = Theme.spacing.md) else Modifier),
         horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
         LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = steps,
-            contentPadding = if (wide) PaddingValues(0.dp) else padding,
+            contentPadding = if (wide) PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding()) else padding,
             verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
             item(key = "file") { fileStep() }
             item(key = "configuration") { configurationStep() }
             item(key = "processing") { processingStep() }
             if (!wide && showingTask) item(key = "logs") { logCard() }
         }
-        if (wide) Box(Modifier.weight(1f).fillMaxHeight()) { logCard() }
+        if (wide) Box(Modifier.weight(1f).fillMaxHeight().padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())) { logCard() }
     }
 }
 

@@ -37,10 +37,12 @@ import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.recovery.RecoveryOptions
 import com.winter.godot.tool.ui.AdaptiveColumns
 import com.winter.godot.tool.ui.LocalRootBottomInset
+import com.winter.godot.tool.ui.LocalToolBlurSupported
 import com.winter.godot.tool.ui.ToolDevice
 import com.winter.godot.tool.ui.components.SectionTitle
 import com.winter.godot.tool.ui.rememberMovableToolContent
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -77,10 +79,16 @@ fun SettingsScreen(settings: ToolSettings, onChange: (ToolSettings) -> Unit,
     val tabletScroll = rememberScrollState()
     val glassSupported = Build.VERSION.SDK_INT >= 33 && isRuntimeShaderSupported()
     val bottomInset = LocalRootBottomInset.current
+    val blurSupported = LocalToolBlurSupported.current
     val appearance = rememberMovableToolContent {
         SectionTitle(stringResource(R.string.theme))
         Card {
             ThemeModePreference(settings.theme, onThemeChange, onThemePrepare, onThemeDismiss)
+            SwitchPreference(checked = settings.blurEnabled && blurSupported,
+                onCheckedChange = { onChange(settings.copy(blurEnabled = it)) },
+                title = stringResource(R.string.enable_blur), enabled = blurSupported,
+                summary = if (blurSupported) null else stringResource(
+                    if (Build.VERSION.SDK_INT < 33) R.string.blur_requires_android_13 else R.string.blur_unavailable))
             SwitchPreference(settings.floatingBottomBar, { onChange(settings.copy(floatingBottomBar = it)) },
                 stringResource(R.string.floating_bottom_bar))
             AnimatedVisibility(settings.floatingBottomBar) {
@@ -120,8 +128,8 @@ fun SettingsScreen(settings: ToolSettings, onChange: (ToolSettings) -> Unit,
         }
     }
     if (ToolDevice.isPhone) {
-        LazyColumn(state = phoneList, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset)) {
+        LazyColumn(state = phoneList, contentPadding = toolContentPadding(PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset))) {
             item { appearance() }
             item { recovery() }
             item { comparison() }
@@ -129,8 +137,8 @@ fun SettingsScreen(settings: ToolSettings, onChange: (ToolSettings) -> Unit,
             item { about() }
         }
     } else {
-        AdaptiveColumns(scrollState = tabletScroll, spacing = 0.dp, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset),
+        AdaptiveColumns(scrollState = tabletScroll, spacing = 0.dp, contentPadding = toolContentPadding(PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+            top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset)),
             primary = { appearance(); recovery() }, secondary = { comparison(); backup(); about() })
     }
 }

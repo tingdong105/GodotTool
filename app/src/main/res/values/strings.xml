@@ -355,4 +355,7 @@
     <string name="backup_io_error">读写备份失败，请检查存储权限和可用空间</string>
     <string name="backup_recovery_error">还原事务尚未恢复，请重新打开软件后重试</string>
     <string name="backup_refresh_error">数据已还原，页面刷新失败，请重新打开软件</string>
+    <string name="enable_blur">启用模糊</string>
+    <string name="blur_requires_android_13">需要 Android 13 或更高版本</string>
+    <string name="blur_unavailable">当前设备不支持模糊</string>
 </resources>

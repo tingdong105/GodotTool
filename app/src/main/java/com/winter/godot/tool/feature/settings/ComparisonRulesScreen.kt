@@ -58,10 +58,12 @@ import com.winter.godot.tool.feature.compare.RuleGroup
 import com.winter.godot.tool.feature.compare.RuleMatch
 import com.winter.godot.tool.feature.compare.RuleTarget
 import com.winter.godot.tool.feature.compare.sortComparisonRules
+import com.winter.godot.tool.ui.LocalToolContentPadding
 import com.winter.godot.tool.ui.components.ConfirmDialog
 import com.winter.godot.tool.ui.components.EmptyContent
 import com.winter.godot.tool.ui.components.PrimaryButton
 import com.winter.godot.tool.ui.theme.Theme
+import com.winter.godot.tool.ui.toolContentPadding
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -139,14 +141,14 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
     }
     Box(Modifier.fillMaxSize()) {
         when {
-            state.rulesLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.rulesLoadFailed -> Column(Modifier.align(Alignment.Center).padding(Theme.spacing.lg),
+            state.rulesLoading -> Box(Modifier.fillMaxSize().padding(LocalToolContentPadding.current), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            state.rulesLoadFailed -> Column(Modifier.align(Alignment.Center).padding(LocalToolContentPadding.current).padding(Theme.spacing.lg),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 Text(stringResource(R.string.compare_rules_load_failed), color = MiuixTheme.colorScheme.error)
                 TextButton(stringResource(R.string.retry), onRetry)
             }
-            else -> LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
-                top = Theme.spacing.md, bottom = FloatingActionButtonDefaults.MinHeight + Theme.spacing.xxl),
+            else -> LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = toolContentPadding(PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
+                top = Theme.spacing.md, bottom = FloatingActionButtonDefaults.MinHeight + Theme.spacing.xxl)),
                 verticalArrangement = Arrangement.spacedBy(Theme.spacing.md)) {
                 if (state.rulesError != null && editingId == null) item {
                     Text(stringResource(state.rulesError), color = MiuixTheme.colorScheme.error)
@@ -162,7 +164,7 @@ fun ComparisonRulesScreen(state: CompareUiState, onSave: (ComparisonRule?, Compa
             }
         }
         if (!state.rulesLoading && !state.rulesLoadFailed) AnimatedContent(targetState = selecting,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Theme.spacing.lg),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(LocalToolContentPadding.current).padding(Theme.spacing.lg),
             transitionSpec = {
                 (slideInVertically(spring(dampingRatio = 0.6f, stiffness = 260f)) { it * 2 } + fadeIn(tween(180)))
                     .togetherWith(slideOutVertically(spring(dampingRatio = 0.75f, stiffness = 300f)) { it * 2 } + fadeOut(tween(180)))

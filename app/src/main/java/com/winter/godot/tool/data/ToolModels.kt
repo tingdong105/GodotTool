@@ -20,7 +20,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 data class ToolSettings(val theme: ThemeMode = ThemeMode.SYSTEM, val scripts: Boolean = true, val scenes: Boolean = false,
     val assets: Boolean = false, val plugins: Boolean = false, val config: Boolean = false, val keepRaw: Boolean = false,
     val snapshot: SnapshotOptions = SnapshotOptions(),
-    val floatingBottomBar: Boolean = false, val liquidGlass: Boolean = true) {
+    val floatingBottomBar: Boolean = false, val liquidGlass: Boolean = true, val blurEnabled: Boolean = false) {
     val selection: RecoverySelection get() = RecoverySelection(scripts, scenes, assets, plugins, config, keepRaw)
 
     /**

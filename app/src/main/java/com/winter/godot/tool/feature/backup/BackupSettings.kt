@@ -11,7 +11,7 @@ import org.json.JSONObject
  * @date 2026-11-26
  */
 internal object BackupSettings {
-    private val toolBooleans = mapOf("floating-bottom-bar" to false, "liquid-glass" to true,
+    private val toolBooleans = mapOf("floating-bottom-bar" to false, "liquid-glass" to true, "enable-blur" to false,
         "scripts" to true, "scenes" to false, "assets" to false, "plugins" to false,
         "project-config" to false, "keep-raw" to false, "snapshot" to false)
     private val readerBooleans = mapOf("wrap-lines" to true, "rules-reversed" to true, "focus-rules-reversed" to true)
@@ -41,7 +41,9 @@ internal object BackupSettings {
         val main = value.getJSONObject("tool")
         val reader = value.getJSONObject("reader")
         ThemeMode.valueOf(main.getString("theme"))
-        toolBooleans.keys.forEach { require(main.get(it) is Boolean) { "BACKUP_INVALID" } }
+        toolBooleans.keys.forEach { key ->
+            if (key != "enable-blur" || main.has(key)) require(main.get(key) is Boolean) { "BACKUP_INVALID" }
+        }
         readerBooleans.keys.forEach { require(reader.get(it) is Boolean) { "BACKUP_INVALID" } }
         sortKeys.forEach { RuleSort.valueOf(reader.getString(it)) }
     }
@@ -57,7 +59,9 @@ internal object BackupSettings {
         val main = value.getJSONObject("tool")
         val comparison = value.getJSONObject("reader")
         check(tool.encode("theme", main.getString("theme")))
-        toolBooleans.keys.forEach { check(tool.encode(it, main.getBoolean(it))) }
+        toolBooleans.forEach { (key, default) ->
+            check(tool.encode(key, if (main.has(key)) main.getBoolean(key) else default))
+        }
         readerBooleans.keys.forEach { check(reader.encode(it, comparison.getBoolean(it))) }
         sortKeys.forEach { check(reader.encode(it, comparison.getString(it))) }
         tool.sync(); reader.sync()
