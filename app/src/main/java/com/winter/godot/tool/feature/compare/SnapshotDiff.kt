@@ -145,10 +145,42 @@ object SnapshotDiff {
         file.seek(entry.offset)
         val count = file.readInt()
         require(dataVersion in 1..2 && count in 1..400002) { "COMPARISON_INVALID" }
-        return ScriptChange(entry.path, List(count) {
-            val change = MethodChange(ChangeKind.entries[file.readInt()], file.readUTF(), file.readUTF(), file.readUTF(), file.readBoolean(), file.readBoolean())
-            if (dataVersion >= 2) change.copy(mode = ComparisonMode.entries[file.readInt()].also { require(it != ComparisonMode.FOCUS) { "COMPARISON_INVALID" } }) else change
-        })
+        return ScriptChange(entry.path, List(count) { readChange(file, dataVersion) })
+    }
+
+    /**
+     * 流式验证备份中的单条脚本，避免同时保留全部方法字符串。
+     * @param file 已打开的二进制结果。
+     * @param entry 对应索引。
+     * @param dataVersion 二进制格式版本。
+     * @param check 取消检查。
+     */
+    internal fun validate(file: RandomAccessFile, entry: ComparisonEntry, dataVersion: Int, check: () -> Unit) {
+        require(file.filePointer == entry.offset && dataVersion in 1..2) { "COMPARISON_INVALID" }
+        val count = file.readInt()
+        require(count in 1..400002) { "COMPARISON_INVALID" }
+        val methods = MutableList(ChangeKind.entries.size) { 0 }
+        val members = MutableList(ChangeKind.entries.size) { 0 }
+        repeat(count) {
+            check()
+            val change = readChange(file, dataVersion)
+            val counts = if (change.mode == ComparisonMode.METHODS) methods else members
+            counts[change.kind.ordinal]++
+        }
+        require(methods == entry.counts && members == entry.memberCounts) { "COMPARISON_INVALID" }
+    }
+
+    /**
+     * 统一解码并校验单条变化的枚举范围。
+     * @param file 当前结果句柄。
+     * @param dataVersion 二进制版本。
+     * @return 单条方法或字段变化。
+     */
+    private fun readChange(file: RandomAccessFile, dataVersion: Int): MethodChange {
+        val change = MethodChange(ChangeKind.entries[file.readInt()], file.readUTF(), file.readUTF(), file.readUTF(), file.readBoolean(), file.readBoolean())
+        return if (dataVersion >= 2) change.copy(mode = ComparisonMode.entries[file.readInt()].also {
+            require(it != ComparisonMode.FOCUS) { "COMPARISON_INVALID" }
+        }) else change
     }
 
     /**

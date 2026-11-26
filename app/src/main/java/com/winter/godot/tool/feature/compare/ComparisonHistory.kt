@@ -43,6 +43,33 @@ class ComparisonHistory(private val root: File, private val publicRoot: File,
         .mapNotNull { runCatching { metadata(File(it, "record.json")) }.getOrNull() }.sortedByDescending { it.createdAt }
 
     /**
+     * 验证备份记录的完整业务内容，可解除原设备报告关联。
+     * @param clearPublication 是否清除公开报告位置。
+     * @param check 取消检查。
+     */
+    fun validateBackup(clearPublication: Boolean = false, check: () -> Unit) {
+        if (!root.exists()) return
+        val directories = requireNotNull(root.listFiles()) { "COMPARISON_INVALID" }.filter { !it.name.startsWith('.') }
+        for (folder in directories) {
+            check()
+            require(folder.isDirectory && folder.name.matches(Regex("[0-9a-f-]{36}")) && folder.canonicalFile.parentFile == root.canonicalFile) { "COMPARISON_INVALID" }
+            val names = requireNotNull(folder.listFiles()).filter { !it.name.startsWith('.') }
+            require(names.all { it.isFile && it.name in setOf("record.json", "result.bin", "index.json", "change.txt", "stars.json") &&
+                it.canonicalFile.parentFile == folder.canonicalFile }) { "COMPARISON_INVALID" }
+            require(File(folder, "change.txt").let { it.isFile && it.length() <= SnapshotFormat.MAX_BYTES * 4 }) { "COMPARISON_INVALID" }
+            val (record, result) = open(folder.name, check)
+            java.io.RandomAccessFile(result.file, "r").use { data ->
+                for (entry in result.entries) { check(); SnapshotDiff.validate(data, entry, result.dataVersion, check) }
+                require(data.filePointer == data.length()) { "COMPARISON_INVALID" }
+            }
+            require(record.counts.map { it.toLong() } == ChangeKind.entries.map { kind -> result.entries.sumOf { it.counts[kind.ordinal].toLong() } }) { "COMPARISON_INVALID" }
+            require(record.memberCounts.map { it.toLong() } == ChangeKind.entries.map { kind -> result.entries.sumOf { it.memberCounts[kind.ordinal].toLong() } }) { "COMPARISON_INVALID" }
+            stars(folder.name)
+            if (clearPublication) writeMetadata(File(folder, "record.json"), record.copy(publicName = "", publicBase = ComparisonRecord.PUBLIC_BASE))
+        }
+    }
+
+    /**
      * 原子保存完整差异及可读报告。
      * @param result 比较结果。
      * @param oldName 旧版输入名称。

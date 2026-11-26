@@ -8,14 +8,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntRect
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.winter.godot.tool.ui.ToolRoute
+import com.winter.godot.tool.ui.components.PrimaryButton
+import com.winter.godot.tool.ui.components.ToolDialog
 import com.winter.godot.tool.ui.startup.StartupViewModel
+import com.winter.godot.tool.ui.theme.GodotToolTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Text
 import kotlin.math.roundToInt
 
 /**
@@ -74,7 +81,23 @@ class MainActivity : ComponentActivity() {
         }
         startupPreDraw = listener
         window.decorView.viewTreeObserver.addOnPreDrawListener(listener)
-        setContent { ToolRoute(startup = startup) }
+        lifecycleScope.launch {
+            try {
+                (application as App).prepareData()
+                setContent { ToolRoute(startup = startup) }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) {
+                startup.finish()
+                setContent { GodotToolTheme {
+                    Scaffold { _ ->
+                        ToolDialog(stringResource(R.string.notice), ::finish) {
+                            Text(stringResource(R.string.backup_recovery_error))
+                            PrimaryButton(stringResource(R.string.close), ::finish)
+                        }
+                    }
+                } }
+            }
+        }
     }
 
     /** 清理尚未交接的启动屏绘制监听。 */

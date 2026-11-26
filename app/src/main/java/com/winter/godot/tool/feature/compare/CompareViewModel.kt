@@ -6,6 +6,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.tencent.mmkv.MMKV
 import com.winter.godot.tool.R
+import com.winter.godot.tool.feature.backup.BackupAccess
+import com.winter.godot.tool.feature.backup.BackupScope
 import com.winter.godot.tool.feature.files.StorageAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +19,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -81,6 +84,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         wrapLines = readerPreferences.decodeBool("wrap-lines", true),
         filterRuleList = restoreRuleList(RuleGroup.FILTER), focusRuleList = restoreRuleList(RuleGroup.FOCUS)))
     val ui = mutableUi.asStateFlow()
+    private var initializationJob: Job? = null
     private var beforeJob: Job? = null
     private var afterJob: Job? = null
     private val restorationJobs = mutableListOf<Job>()
@@ -94,16 +98,23 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
     private var rulesLoadJob: Job? = null
     private var starJob: Job? = null
     private var publishJob: Job? = null
+    private var deleteJob: Job? = null
 
     init {
-        val restoredRecord = saved.get<String>("comparisonRecord")
-        for (old in listOf(true, false)) {
-            val source = saved.get<String>(if (old) "oldSnapshot" else "newSnapshot")
-            if (source != null) select(old, source, restoring = true)
+        initializationJob = viewModelScope.launch {
+            // 维护结束后再恢复偏好、输入与历史。
+            while (BackupAccess.busy.value) BackupAccess.busy.first { !it }
+            mutableUi.update { it.copy(wrapLines = readerPreferences.decodeBool("wrap-lines", true),
+                filterRuleList = restoreRuleList(RuleGroup.FILTER), focusRuleList = restoreRuleList(RuleGroup.FOCUS)) }
+            val restoredRecord = saved.get<String>("comparisonRecord")
+            for (old in listOf(true, false)) {
+                val source = saved.get<String>(if (old) "oldSnapshot" else "newSnapshot")
+                if (source != null) select(old, source, restoring = true)
+            }
+            refreshHistory()
+            loadRules()
+            if (restoredRecord != null) open(restoredRecord)
         }
-        refreshHistory()
-        loadRules()
-        if (restoredRecord != null) open(restoredRecord)
     }
 
     /**
@@ -113,6 +124,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param restoring 是否优先使用会话缓存。
      */
     fun select(old: Boolean, path: String, restoring: Boolean = false) {
+        if (BackupAccess.busy.value) return
         if (!restoring && (ui.value.running || ui.value.progress != null)) return
         val pendingInputs = if (restoring) emptyList() else (restorationJobs + listOfNotNull(beforeJob, afterJob)).distinct()
         if (restoring) { if (old) beforeJob?.cancel() else afterJob?.cancel() }
@@ -175,6 +187,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 比较并保存记录，成功后清空输入与会话恢复引用。
      */
     fun start() {
+        if (BackupAccess.busy.value) return
         val state = ui.value
         if (state.busy || state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
         val old = state.before ?: return; val new = state.after ?: return
@@ -261,6 +274,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 刷新独立的历史列表。
      */
     fun refreshHistory() {
+        if (BackupAccess.busy.value) return
         historyJob?.cancel()
         historyJob = viewModelScope.launch {
             try {
@@ -276,6 +290,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param id 记录标识。
      */
     fun open(id: String) {
+        if (BackupAccess.busy.value) return
         openJob?.cancel(); filterJob?.cancel(); moreJob?.cancel(); resultIndex = null
         saved["comparisonRecord"] = id
         mutableUi.update { it.copy(viewingId = id, opening = true, result = null, record = null, rows = emptyList(), totalRows = 0,
@@ -328,9 +343,10 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 删除所选私有记录，公开报告保留。
      */
     fun deleteSelected() {
+        if (BackupAccess.busy.value) return
         val ids = ui.value.selected
         if (ids.isEmpty()) return
-        viewModelScope.launch {
+        deleteJob = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { val context = coroutineContext; history.delete(ids) { context.ensureActive() } }
                 mutableUi.update { it.copy(selected = emptySet()) }; refreshHistory()
@@ -343,6 +359,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 重试保存当前记录的公开报告。
      */
     fun publish() {
+        if (BackupAccess.busy.value) return
         val record = ui.value.record ?: return
         if (ui.value.publishing) return
         mutableUi.update { it.copy(publishing = true) }
@@ -360,7 +377,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 搜索并定位首个匹配结果。
      * @param value 关键词。
      */
-    fun search(value: String) { mutableUi.update { it.copy(query = value.take(256)) }; filterResults() }
+    fun search(value: String) { if (BackupAccess.busy.value) return; mutableUi.update { it.copy(query = value.take(256)) }; filterResults() }
 
     /**
      * 展开或收起顶栏搜索。
@@ -375,25 +392,26 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 切换全部、增加、修改或删除。
      * @param kind 空值为全部。
      */
-    fun filter(kind: ChangeKind?) { mutableUi.update { it.copy(filter = kind) }; filterResults() }
+    fun filter(kind: ChangeKind?) { if (BackupAccess.busy.value) return; mutableUi.update { it.copy(filter = kind) }; filterResults() }
 
     /**
      * 更新插件显示范围。
      * @param value 是否包含插件。
      */
-    fun plugins(value: Boolean) { saved["comparisonPlugins"] = value; mutableUi.update { it.copy(includePlugins = value) }; filterResults() }
+    fun plugins(value: Boolean) { if (BackupAccess.busy.value) return; saved["comparisonPlugins"] = value; mutableUi.update { it.copy(includePlugins = value) }; filterResults() }
 
     /**
      * 切换关注模式。
      * @param value 是否仅看关注。
      */
-    fun focus(value: Boolean) { mutableUi.update { it.copy(focusOnly = value) }; filterResults() }
+    fun focus(value: Boolean) { if (BackupAccess.busy.value) return; mutableUi.update { it.copy(focusOnly = value) }; filterResults() }
 
     /**
      * 保存文本换行偏好，不重新读取对比结果。
      * @param value 是否自动换行。
      */
     fun wrapLines(value: Boolean) {
+        if (BackupAccess.busy.value) return
         readerPreferences.encode("wrap-lines", value)
         mutableUi.update { it.copy(wrapLines = value) }
     }
@@ -402,7 +420,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 切换独立的结果范围，保留当前增删改分类与搜索。
      * @param mode 方法、字段或仅看关心的菜单指令。
      */
-    fun viewMode(mode: ComparisonMode) {
+    fun viewMode(mode: ComparisonMode) { if (BackupAccess.busy.value) return;
         val focusOnly = mode == ComparisonMode.FOCUS
         val contentMode = if (focusOnly) ui.value.viewMode else mode
         if (contentMode == ui.value.viewMode && focusOnly == ui.value.focusOnly) return
@@ -414,6 +432,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 接近列表末尾时追加下一批方法，失败后允许点击重试。
      */
     fun loadMore() {
+        if (BackupAccess.busy.value) return
         val state = ui.value
         val index = resultIndex ?: return
         if (state.filtering || state.loadingMore || !state.hasMore) return
@@ -433,6 +452,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param row 方法行。
      */
     fun star(row: ComparisonRow) {
+        if (BackupAccess.busy.value) return
         val id = ui.value.record?.id ?: return
         val key = ComparisonResults.starKey(row.path, row.change)
         val values = ui.value.stars.let { if (key in it) it - key else it + key }
@@ -450,6 +470,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * 加载全局对比规则，失败保留文件并允许重试。
      */
     fun loadRules() {
+        if (BackupAccess.busy.value) return
         if (ui.value.rulesSaving || rulesLoadJob?.isActive == true) return
         mutableUi.update { it.copy(rulesLoading = true, rulesLoadFailed = false, rulesError = null) }
         rulesLoadJob = viewModelScope.launch {
@@ -473,6 +494,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param rule 表单提交的规则。
      */
     fun saveRule(group: RuleGroup, original: ComparisonRule?, rule: ComparisonRule) {
+        if (BackupAccess.busy.value) return
         val state = ui.value
         if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving) return
         if (original != null && original.exclude != group.exclude) return
@@ -493,6 +515,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param ids 已确认删除的规则身份集合。
      */
     fun deleteRules(group: RuleGroup, ids: Set<String>) {
+        if (BackupAccess.busy.value) return
         val state = ui.value
         if (state.rulesLoading || state.rulesLoadFailed || state.rulesSaving || ids.isEmpty()) return
         val next = state.rules.filterNot { it.exclude == group.exclude && it.id in ids }
@@ -537,6 +560,7 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
      * @param reversed 用户选择的逆向开关。
      */
     fun sortRules(group: RuleGroup, order: RuleSort, reversed: Boolean) {
+        if (BackupAccess.busy.value) return
         val prefix = if (group == RuleGroup.FILTER) "rules" else "focus-rules"
         readerPreferences.encode("$prefix-sort", order.name)
         readerPreferences.encode("$prefix-reversed", reversed)
@@ -649,11 +673,39 @@ class CompareViewModel(application: Application, private val saved: SavedStateHa
         else -> R.string.compare_read_failed
     }
 
+    /** @return 所有对比读写任务均已退出，可开始维护。 */
+    fun backupReady(): Boolean = !ui.value.busy && !ui.value.rulesLoading && !ui.value.rulesSaving &&
+        (listOfNotNull(initializationJob, beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob,
+            ruleJob, rulesLoadJob, starJob, publishJob, deleteJob) + restorationJobs).all { it.isCompleted }
+
+    /**
+     * 还原提交后刷新对应内存状态，不重新触发公开报告发布。
+     * @param scopes 已覆盖的数据范围。
+     */
+    suspend fun reloadAfterRestore(scopes: Set<BackupScope>) {
+        if (BackupScope.HISTORY in scopes) {
+            closeResult()
+            val records = withContext(Dispatchers.IO) { history.list() }
+            mutableUi.update { it.copy(histories = records, selected = emptySet(), historyLoading = false) }
+        }
+        if (scopes.any { it == BackupScope.FILTER_RULES || it == BackupScope.FOCUS_RULES }) {
+            val rules = withContext(Dispatchers.IO) { ComparisonRules.load(rulesFile) }
+            mutableUi.update { it.copy(rules = rules, rulesLoading = false, rulesLoadFailed = false,
+                rulesError = null, rulesRevision = it.rulesRevision + 1) }
+            trimRuleSelections(rules)
+        }
+        if (BackupScope.SETTINGS in scopes) {
+            mutableUi.update { it.copy(wrapLines = readerPreferences.decodeBool("wrap-lines", true),
+                filterRuleList = restoreRuleList(RuleGroup.FILTER), focusRuleList = restoreRuleList(RuleGroup.FOCUS)) }
+        }
+        if (BackupScope.HISTORY !in scopes) filterResults()
+    }
+
     /**
      * 回收会话缓存，持久历史独立保留。
      */
     override fun onCleared() {
-        val jobs = (listOfNotNull(beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, rulesLoadJob, starJob, publishJob) + restorationJobs).distinct()
+        val jobs = (listOfNotNull(initializationJob, beforeJob, afterJob, compareJob, filterJob, moreJob, historyJob, openJob, ruleJob, rulesLoadJob, starJob, publishJob, deleteJob) + restorationJobs).distinct()
         jobs.forEach { it.cancel() }
         val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         cleanup.launch {

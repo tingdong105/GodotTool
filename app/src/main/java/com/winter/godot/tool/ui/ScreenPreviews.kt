@@ -14,6 +14,10 @@ import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
+import com.winter.godot.tool.feature.backup.BackupDialogs
+import com.winter.godot.tool.feature.backup.BackupScope
+import com.winter.godot.tool.feature.backup.BackupScopeDialog
+import com.winter.godot.tool.feature.backup.BackupUiState
 import com.winter.godot.tool.feature.compare.ChangeKind
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareUiState
@@ -508,3 +512,43 @@ private fun ComparisonFocusedResultPreview() { GodotToolTheme {
         rows = listOf(ComparisonRow("scripts/player.gd", MethodChange(ChangeKind.MODIFIED, "health", "var health = 100", "var health = 200",
             mode = ComparisonMode.CONSTANTS), true))), {}, {}, {}, {}, {}, {}, {}, {}, {})
 } }
+
+/** 备份范围的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun BackupScopePreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
+    val available = BackupScope.entries.toSet()
+    var selected by remember { mutableStateOf(available) }
+    BackupScopeDialog(false, available, selected, { selected = it }, {}, {})
+} } }
+
+/** 自定义备份展开后的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun BackupCustomScopePreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
+    var selected by remember { mutableStateOf(emptySet<BackupScope>()) }
+    BackupScopeDialog(false, BackupScope.entries.toSet(), selected, { selected = it }, {}, {})
+} } }
+
+/** 部分备份还原范围的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun RestoreScopePreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
+    val available = setOf(BackupScope.FILTER_RULES, BackupScope.SETTINGS)
+    var selected by remember { mutableStateOf(setOf(BackupScope.SETTINGS)) }
+    BackupScopeDialog(true, available, selected, { selected = it }, {}, {})
+} } }
+
+/** 备份进度的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun BackupProgressPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
+    BackupDialogs(BackupUiState(id = "backup-preview", running = true, fraction = 0.6f), {}, {}, {}, {}, {}, {}, {}, {})
+} } }
+
+/** 覆盖还原确认的手机和平板明暗预览。 */
+@ScreenPreviews
+@Composable
+private fun RestoreConfirmationPreview() { GodotToolTheme { ToolScaffold(Screen.SETTINGS) {
+    BackupDialogs(BackupUiState(id = "restore-preview", restoring = true, confirming = true), {}, {}, {}, {}, {}, {}, {}, {})
+} } }

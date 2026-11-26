@@ -6,6 +6,7 @@ import android.util.Log
 import com.tencent.mmkv.MMKV
 import com.winter.godot.core.model.RecoverySelection
 import com.winter.godot.tool.R
+import com.winter.godot.tool.feature.backup.BackupAccess
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.task.EngineClient
 import com.winter.godot.tool.task.EngineExitDiagnostics
@@ -79,6 +80,7 @@ class ToolRepository(private val context: Context) {
      * @param value 完整偏好。
      */
     fun updateSettings(value: ToolSettings) {
+        if (BackupAccess.busy.value) return
         kv.encode("theme", value.theme.name)
         kv.encode("floating-bottom-bar", value.floatingBottomBar)
         kv.encode("liquid-glass", value.liquidGlass)
@@ -91,6 +93,9 @@ class ToolRepository(private val context: Context) {
         kv.encode("snapshot", value.snapshot.generate)
         mutableSettings.value = value
     }
+
+    /** 还原成功后重新读取偏好并立即更新订阅者。 */
+    fun reloadSettings() { mutableSettings.value = loadSettings() }
 
     /**
      * 读取上次确认文件所在的目录，由浏览器校验可访问性。

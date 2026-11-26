@@ -39,4 +39,7 @@ object StorageAccess {
      * @return 共享存储中的 GodotTool/diff。
      */
     fun diffRoot(): File = File(outputRoot(), "diff")
+
+    /** @return 共享存储中的本地备份目录。 */
+    fun backupRoot(): File = File(outputRoot(), "backup")
 }

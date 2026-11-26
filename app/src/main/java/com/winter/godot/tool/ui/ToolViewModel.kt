@@ -15,6 +15,7 @@ import com.winter.godot.tool.data.TaskRecord
 import com.winter.godot.tool.data.TaskStatus
 import com.winter.godot.tool.data.ToolSettings
 import com.winter.godot.tool.data.WorkspaceEntry
+import com.winter.godot.tool.feature.backup.BackupAccess
 import com.winter.godot.tool.feature.compare.SnapshotOptions
 import com.winter.godot.tool.feature.files.BrowserFile
 import com.winter.godot.tool.feature.files.BrowserSort
@@ -118,7 +119,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         val id = saved.get<String>("workspaceId")
         if (backStack.value.last() == Screen.WORKSPACE) {
             if (id != null) openWorkspace(id) else navigate(Screen.HOME)
-        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { repository.confirmedBrowserPath(ui.value.pickerPurpose != "recovery") }, restoring = true)
+        } else if (ui.value.screen == Screen.FILES) readBrowser(ui.value.browserPath.ifEmpty { pickerStartPath() }, restoring = true)
     }
 
     /**
@@ -144,7 +145,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
             browserFiles = if (screen == Screen.FILES) emptyList() else it.browserFiles,
             entries = if (screen == Screen.WORKSPACE) it.entries else emptyList(), loading = false, browserRefreshing = false) }
         saved.saveRecoverySelection(ui.value.selection)
-        if (screen == Screen.FILES) readBrowser(repository.confirmedBrowserPath(ui.value.pickerPurpose != "recovery"), restoring = true)
+        if (screen == Screen.FILES) readBrowser(pickerStartPath(), restoring = true)
     }
 
     /**
@@ -207,6 +208,11 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
         mutableUi.update { it.copy(browserSort = defaultBrowserSort, browserReversed = defaultBrowserReversed, browserDirectoryOnly = false) }
     }
 
+    /** @return 当前用途的默认目录，备份与其它选择会话相互独立。 */
+    private fun pickerStartPath(): String = if (ui.value.pickerPurpose == "backup-restore")
+        StorageAccess.backupRoot().takeIf { it.isDirectory }?.absolutePath ?: StorageAccess.root().absolutePath
+    else repository.confirmedBrowserPath(ui.value.pickerPurpose != "recovery")
+
     /**
      * 异步校验、读取与排序目录，恢复失效位置时回退内部存储。
      * @param path 目标目录。
@@ -229,7 +235,11 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
                     } catch (error: Exception) {
                         if (restoring) StorageAccess.root() else throw error
                     }
-                    val extensions = if (browserState.pickerPurpose == "recovery") setOf("apk", "pck", "zip") else setOf("gt", "zip")
+                    val extensions = when (browserState.pickerPurpose) {
+                        "recovery" -> setOf("apk", "pck", "zip")
+                        "backup-restore" -> setOf("zip")
+                        else -> setOf("gt", "zip")
+                    }
                     val (actualPath, files) = try { folder.absolutePath to browser.list(folder.absolutePath, extensions) }
                     catch (error: Exception) {
                         if (restoring && folder != StorageAccess.root()) StorageAccess.root().absolutePath to browser.list(StorageAccess.root().absolutePath, extensions) else throw error
@@ -259,7 +269,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
     /**
      * 确认文件后返回首页配置步骤。
      */
-    fun confirmFiles(onSnapshot: (Boolean, String) -> Unit = { _, _ -> }) {
+    fun confirmFiles(onSnapshot: (Boolean, String) -> Unit = { _, _ -> }, onBackup: (String) -> Unit = {}) {
         val purpose = ui.value.pickerPurpose
         if (active.value != null && purpose == "recovery" || ui.value.loading || ui.value.chosenFiles.size != 1) return
         val chosen = ui.value.chosenFiles.single()
@@ -271,6 +281,12 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
                     val parent = FileBrowser(StorageAccess.root()).checked(requireNotNull(file.parent))
                     check(file.isFile && file.canRead()) { "Selected file unavailable" }
                     parent.absolutePath
+                }
+                if (purpose == "backup-restore") {
+                    mutableUi.update { it.copy(loading = false, chosenFiles = emptySet()) }
+                    navigate(Screen.SETTINGS)
+                    onBackup(chosen)
+                    return@launch
                 }
                 if (purpose != "recovery") {
                     repository.rememberBrowserPath(folder, comparison = true)
@@ -318,6 +334,7 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * 使用首页确认的文件与配置启动后台任务。
      */
     fun recoverChosen() {
+        if (BackupAccess.busy.value) return
         val selection = if (ui.value.followsSettings) settings.value.selection else ui.value.selection
         if (active.value != null || ui.value.inputFiles.size != 1 || !selection.hasContent) return
         val file = File(ui.value.inputFiles.single())
@@ -362,10 +379,10 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
 
     /**
      * 指定内置选择器的输入用途。
-     * @param purpose recovery、snapshot-old 或 snapshot-new。
+     * @param purpose recovery、snapshot-old、snapshot-new 或 backup-restore。
      */
     fun preparePicker(purpose: String) {
-        require(purpose in setOf("recovery", "snapshot-old", "snapshot-new"))
+        require(purpose in setOf("recovery", "snapshot-old", "snapshot-new", "backup-restore"))
         saved["pickerPurpose"] = purpose
         mutableUi.update { it.copy(pickerPurpose = purpose) }
     }
@@ -375,6 +392,13 @@ class ToolViewModel(application: Application, private val saved: SavedStateHandl
      * @param value 新设置。
      */
     fun updateSettings(value: ToolSettings) = repository.updateSettings(value)
+
+    /** 还原后刷新应用设置与跟随默认值的首页草稿。 */
+    fun reloadSettings() {
+        repository.reloadSettings()
+        if (ui.value.followsSettings) mutableUi.update { it.copy(selection = settings.value.selection,
+            generateSnapshot = settings.value.snapshot.generate) }
+    }
 
     /**
      * 读取可用的工作区文件索引。

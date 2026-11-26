@@ -48,6 +48,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.feature.backup.BackupAccess
+import com.winter.godot.tool.feature.backup.BackupDialogs
+import com.winter.godot.tool.feature.backup.BackupScope
+import com.winter.godot.tool.feature.backup.BackupViewModel
 import com.winter.godot.tool.feature.compare.CompareScreen
 import com.winter.godot.tool.feature.compare.CompareViewModel
 import com.winter.godot.tool.feature.compare.ComparisonResultScreen
@@ -110,7 +114,7 @@ private val toolPageTransition = object : NavTransition by NavTransitions.MiuixD
  */
 @Composable
 fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel = viewModel(), about: AboutViewModel = viewModel(),
-    startup: StartupViewModel? = null) {
+    startup: StartupViewModel? = null, backup: BackupViewModel = viewModel()) {
     val ui by model.ui.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val tasks by model.tasks.collectAsStateWithLifecycle()
@@ -118,9 +122,15 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
     val logs by model.logs.collectAsStateWithLifecycle()
     val comparisonUi by comparison.ui.collectAsStateWithLifecycle()
     val aboutUi by about.ui.collectAsStateWithLifecycle()
+    val backupUi by backup.ui.collectAsStateWithLifecycle()
+    val backupBusy by BackupAccess.busy.collectAsStateWithLifecycle()
+    val backupEnabled = active == null && !comparisonUi.busy && !comparisonUi.rulesLoading && !comparisonUi.rulesSaving &&
+        !comparisonUi.historyLoading && !comparisonUi.opening && !comparisonUi.filtering && !comparisonUi.loadingMore &&
+        !comparisonUi.publishing && !ui.deletingTasks && !backupBusy && !backupUi.inspecting
     val context = LocalContext.current
     var permissionExplanation by remember { mutableStateOf(false) }
     var pendingComparisonExport by rememberSaveable { mutableStateOf(false) }
+    var pendingBackupAction by rememberSaveable { mutableStateOf<String?>(null) }
     var aboutLinkFailed by rememberSaveable { mutableStateOf(false) }
     val openAboutLink: (String) -> Unit = { url ->
         try {
@@ -133,7 +143,14 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
     }
     val storageGranted: () -> Unit = {
         if (StorageAccess.granted(context)) {
-            if (pendingComparisonExport) { pendingComparisonExport = false; comparison.publish() } else model.navigate(Screen.FILES)
+            val backupAction = pendingBackupAction
+            pendingBackupAction = null
+            when {
+                backupAction == "export" -> backup.chooseBackup()
+                backupAction == "restore" -> { model.preparePicker("backup-restore"); model.navigate(Screen.FILES) }
+                pendingComparisonExport -> { pendingComparisonExport = false; comparison.publish() }
+                else -> model.navigate(Screen.FILES)
+            }
         } else permissionExplanation = true
     }
     val legacyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -170,7 +187,8 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
         ui.screen == Screen.TASKS && ui.selectedTasks.isNotEmpty(), onBack = back)
     ThemeTransitionHost(settings.theme, { mode -> model.updateSettings(model.settings.value.copy(theme = mode)) }) { prepareTheme, selectTheme, discardTheme ->
         StartupHost(startup) {
-            ToolNavHost(model.navEntries, ui, back, interceptBack = ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded) { screen, pageUi ->
+            ToolNavHost(model.navEntries, ui, back, interceptBack = ui.screen == Screen.COMPARE_RESULT && comparisonUi.searchExpanded ||
+                    backupUi.running || backupUi.choosing || backupUi.confirming || backupUi.inspecting) { screen, pageUi ->
                 val ruleGroup = screen.comparisonRuleGroup()
                 val ruleList = ruleGroup?.let(comparisonUi::ruleList)
                 val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
@@ -201,7 +219,14 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                         Screen.SETTINGS -> SettingsScreen(settings, active != null, model::updateSettings, model::clearFinished,
                             onThemeChange = selectTheme, onThemePrepare = prepareTheme, onThemeDismiss = discardTheme,
                             onAbout = { model.navigate(Screen.ABOUT) }, onComparisonRules = { model.navigate(Screen.COMPARISON_RULES) },
-                            onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) })
+                            onComparisonFocusRules = { model.navigate(Screen.COMPARISON_FOCUS_RULES) },
+                            backupEnabled = backupEnabled, onBackup = {
+                                if (StorageAccess.granted(context)) backup.chooseBackup()
+                                else { pendingBackupAction = "export"; requestFiles() }
+                            }, onRestore = {
+                                if (StorageAccess.granted(context)) { model.preparePicker("backup-restore"); model.navigate(Screen.FILES) }
+                                else { pendingBackupAction = "restore"; requestFiles() }
+                            })
                         Screen.COMPARISON_RULES, Screen.COMPARISON_FOCUS_RULES -> {
                             val group = requireNotNull(destination.comparisonRuleGroup())
                             ComparisonRulesScreen(comparisonUi, { original, rule -> comparison.saveRule(group, original, rule) },
@@ -215,14 +240,24 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                             LicensesScreen(aboutUi, about::loadLicenses)
                         }
                         Screen.FILES -> FilePickerScreen(pageUi, active == null || pageUi.pickerPurpose != "recovery", model::browseFiles, model::chooseFile,
-                            { model.confirmFiles { old, path -> comparison.select(old, path) } }, model::refreshFiles)
+                            { model.confirmFiles(onSnapshot = { old, path -> comparison.select(old, path) }, onBackup = backup::inspect) }, model::refreshFiles)
                         Screen.WORKSPACE -> WorkspaceScreen(pageUi, model::preview, active = screen == ui.screen)
                     }
                     BackHandler(enabled = screen == ui.screen && (ui.previewPath != null || screen == Screen.FILES &&
                         ui.browserPath.isNotEmpty() && ui.browserPath != StorageAccess.root().absolutePath), onBack = model::back)
                     BackHandler(enabled = destination == Screen.HOME && ui.screen == Screen.HOME && active == null &&
                         ui.inputFiles.isNotEmpty() && ui.homeStep > 1) { model.selectHomeStep(ui.homeStep - 1) }
-                    if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false; pendingComparisonExport = false }) {
+                    // 在设置页的弹窗宿主内注册。
+                    if (destination == Screen.SETTINGS && destination == ui.screen) {
+                        BackupDialogs(backupUi, backup::select, backup::review, backup::dismissChoice, backup::revise,
+                            onConfirm = {
+                                backup.confirm({ model.active.value == null && !model.ui.value.deletingTasks && comparison.backupReady() }) { scopes ->
+                                    if (BackupScope.SETTINGS in scopes) model.reloadSettings()
+                                    comparison.reloadAfterRestore(scopes)
+                                }
+                            }, onCancel = backup::cancel, onFinished = backup::finish, onNotice = backup::dismissNotice)
+                    }
+                    if (destination == ui.screen && permissionExplanation) ToolDialog(stringResource(R.string.storage_permission), { permissionExplanation = false; pendingComparisonExport = false; pendingBackupAction = null }) {
                         Text(stringResource(R.string.storage_permission_detail))
                         PrimaryButton(stringResource(R.string.authorize), { permissionExplanation = false; requestFiles() }, Modifier.fillMaxWidth())
                     }

@@ -66,6 +66,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param onAbout 打开关于软件页面。
  * @param onComparisonRules 打开对比过滤规则设置。
  * @param onComparisonFocusRules 打开对比关心规则设置。
+ * @param onBackup 选择本地备份范围。
+ * @param onRestore 选择本地备份 ZIP。
+ * @param backupEnabled 是否可启动备份维护。
  * @param onChange 即时保存外观与解包选项。
  * @param onThemeChange 立即提交主题及点击位置的窗口坐标。
  * @param onThemePrepare 打开菜单前准备不含菜单的截图。
@@ -74,7 +77,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSettings) -> Unit, onClear: () -> Unit,
     onThemeChange: (ThemeMode, Offset) -> Unit = { mode, _ -> onChange(settings.copy(theme = mode)) },
-    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}, onComparisonFocusRules: () -> Unit = {}) {
+    onThemePrepare: suspend () -> Boolean = { true }, onThemeDismiss: () -> Unit = {}, onAbout: () -> Unit = {}, onComparisonRules: () -> Unit = {}, onComparisonFocusRules: () -> Unit = {},
+    onBackup: () -> Unit = {}, onRestore: () -> Unit = {}, backupEnabled: Boolean = true) {
     var clearing by remember { mutableStateOf(false) }
     val phoneList = rememberLazyListState()
     val tabletScroll = rememberScrollState()
@@ -114,6 +118,13 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
             ArrowPreference(title = stringResource(R.string.compare_focus_rules), onClick = onComparisonFocusRules)
         }
     }
+    val backup = rememberMovableToolContent {
+        SectionTitle(stringResource(R.string.backup_group))
+        Card {
+            ArrowPreference(title = stringResource(R.string.backup_export), enabled = backupEnabled, onClick = onBackup)
+            ArrowPreference(title = stringResource(R.string.backup_restore), enabled = backupEnabled, onClick = onRestore)
+        }
+    }
     val storage = rememberMovableToolContent {
         SectionTitle(stringResource(R.string.storage))
         Card {
@@ -138,13 +149,14 @@ fun SettingsScreen(settings: ToolSettings, busy: Boolean, onChange: (ToolSetting
             item { appearance() }
             item { recovery() }
             item { comparison() }
+            item { backup() }
             item { storage() }
             item { about() }
         }
     } else {
         AdaptiveColumns(scrollState = tabletScroll, spacing = 0.dp, contentPadding = PaddingValues(start = Theme.spacing.md, end = Theme.spacing.md,
             top = Theme.spacing.sm, bottom = Theme.spacing.sm + bottomInset),
-            primary = { appearance(); recovery() }, secondary = { comparison(); storage(); about() })
+            primary = { appearance(); recovery() }, secondary = { comparison(); backup(); storage(); about() })
     }
     if (clearing) ConfirmDialog(stringResource(R.string.clear_cache_title), stringResource(R.string.clear_cache_detail),
         { clearing = false }, { clearing = false; onClear() })
