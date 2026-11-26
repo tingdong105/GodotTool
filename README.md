@@ -33,6 +33,8 @@
 
 **GodotTool** 是一款使用 Kotlin 与 Jetpack Compose 开发的 Android 端 Godot 项目恢复与版本对比工具。
 
+> **提示：** 本项目是以 [GDRE Tools](https://github.com/GDRETools/gdsdecomp) 为核心实现的 Android 端工具，请在合法授权范围内使用，本项目在法律允许的范围内不作任何担保。
+
 ## ✨ 功能亮点
 
 | | 功能 | 说明 |
