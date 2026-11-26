@@ -444,8 +444,21 @@ private fun HomeProcessingPreview() { GodotToolTheme { ToolScaffold(Screen.HOME)
 @ScreenPreviews
 @Composable
 private fun HomeCompletedPreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
-    HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(overallProgress = 1f, selection = RecoverySelection.scriptsOnly()), false,
-        {}, {}, {}, {}, {}, {}, {}, {}, listOf(com.winter.godot.tool.data.TaskLogLine("done", "处理完成，结果已保存", com.winter.godot.tool.data.TaskLogLevel.SUCCESS)))
+    HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(overallProgress = 1f, selection = RecoverySelection.scriptsOnly(),
+        summary = "{\"resources\":2893,\"scripts\":229,\"outputPath\":\"/storage/emulated/0/GodotTool/261126_1.zip\"}"), false,
+        {}, {}, {}, {}, {}, {}, {}, {}, listOf(com.winter.godot.tool.data.TaskLogLine("done", "处理完成，结果已保存", com.winter.godot.tool.data.TaskLogLevel.SUCCESS)),
+        outputAvailable = true)
+} } }
+
+/**
+ * 保存失败且产物不可用时的手机和平板明暗预览。
+ */
+@ScreenPreviews
+@Composable
+private fun HomeOutputUnavailablePreview() { GodotToolTheme { ToolScaffold(Screen.HOME) {
+    HomeScreen(ToolUiState(homeStep = 3), ToolSettings(), exampleTask.copy(status = TaskStatus.PARTIAL,
+        summary = "{\"resources\":2893,\"scripts\":229,\"outputPath\":\"/storage/emulated/0/GodotTool/261126_1.zip\"}",
+        errorCode = "NO_SPACE"), false, {}, {}, {}, {}, {}, {}, {}, {}, outputAvailable = false)
 } } }
 
 /**

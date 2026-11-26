@@ -10,6 +10,8 @@
     <string name="cancel">取消</string>
     <string name="close">关闭</string>
     <string name="copy_path">复制路径</string>
+    <string name="copy_success">复制成功！</string>
+    <string name="output_unavailable">产物文件不存在或无法读取</string>
     <string name="confirm">确定</string>
     <string name="retry">重试</string>
     <string name="delete">删除</string>
@@ -30,7 +32,6 @@
     <string name="task_warning_partial">部分内容未能恢复，详细原因请查看产物中的报告。</string>
     <string name="prepare_import">准备解包</string>
     <string name="start_recovery">开始解包</string>
-    <string name="view_files">查看文件</string>
     <string name="view_report">查看报告</string>
     <string name="status_running">处理中</string>
     <string name="status_succeeded">已完成</string>
@@ -187,7 +188,7 @@
     <string name="follow_settings">跟随设置</string>
     <string name="original_configuration">原任务配置</string>
     <string name="single_file_only">每次只能处理一个文件，请重新选择。</string>
-    <string name="got_it">我知道了</string>
+    <string name="got_it">确认</string>
     <string name="compare">对比</string>
     <string name="generate_snapshot">生成对比快照</string>
     <string name="stage_snapshot">分析对比快照</string>

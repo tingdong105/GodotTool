@@ -1,10 +1,12 @@
 package com.winter.godot.tool.ui
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,7 +35,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -41,13 +45,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winter.godot.tool.R
 import com.winter.godot.tool.data.TaskStatus
+import com.winter.godot.tool.data.isOutputAvailable
 import com.winter.godot.tool.feature.backup.BackupAccess
 import com.winter.godot.tool.feature.backup.BackupDialogs
 import com.winter.godot.tool.feature.backup.BackupScope
@@ -78,6 +87,10 @@ import com.winter.godot.tool.ui.startup.StartupHost
 import com.winter.godot.tool.ui.startup.StartupViewModel
 import com.winter.godot.tool.ui.theme.Theme
 import com.winter.godot.tool.ui.theme.ThemeTransitionHost
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NavigationBar
@@ -129,6 +142,20 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
         !comparisonUi.historyLoading && !comparisonUi.opening && !comparisonUi.filtering && !comparisonUi.loadingMore &&
         !comparisonUi.publishing && !ui.deletingTasks && !backupBusy && !backupUi.inspecting
     val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val latestTask = tasks.firstOrNull { it.id == active } ?: tasks.firstOrNull()
+    val outputPath = remember(latestTask?.summary) {
+        runCatching { JSONObject(latestTask?.summary.orEmpty()).optString("outputPath") }.getOrDefault("")
+    }
+    var outputCheckVersion by remember { mutableStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { outputCheckVersion++ }
+    val availableOutputPath by produceState("", latestTask?.id, latestTask?.status, outputPath, ui.screen, outputCheckVersion) {
+        value = ""
+        if (ui.screen == Screen.HOME && latestTask?.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL)) {
+            value = withContext(Dispatchers.IO) { outputPath.takeIf(::isOutputAvailable).orEmpty() }
+        }
+    }
     var permissionExplanation by remember { mutableStateOf(false) }
     var pendingComparisonExport by rememberSaveable { mutableStateOf(false) }
     var pendingBackupAction by rememberSaveable { mutableStateOf<String?>(null) }
@@ -195,7 +222,7 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                 val workspaceTitle = pageUi.previewPath?.substringAfterLast('/') ?: tasks.firstOrNull { it.id == pageUi.workspaceId }?.name.orEmpty()
                 val page: @Composable (Screen) -> Unit = { destination ->
                     when (destination) {
-                        Screen.HOME -> HomeScreen(pageUi, settings, tasks.firstOrNull { it.id == active } ?: tasks.firstOrNull(), active != null,
+                        Screen.HOME -> HomeScreen(pageUi, settings, latestTask, active != null,
                             model::selectHomeStep, { pendingComparisonExport = false; model.preparePicker("recovery"); model.navigate(Screen.HOME); requestFiles() }, model::followSettings, model::editSelection,
                             {
                                 if (StorageAccess.granted(context)) {
@@ -204,7 +231,17 @@ fun ToolRoute(model: ToolViewModel = viewModel(), comparison: CompareViewModel =
                                 } else { pendingComparisonExport = false; model.preparePicker("recovery"); requestFiles() }
                             }, model::newRecovery,
                             { model.navigate(Screen.HOME); model.navigate(Screen.TASKS) },
-                            { id -> model.navigate(Screen.HOME); model.openWorkspace(id) }, logs, model::editSnapshot)
+                            { path ->
+                                scope.launch {
+                                    if (!withContext(Dispatchers.IO) { isOutputAvailable(path) }) {
+                                        outputCheckVersion++
+                                        Toast.makeText(context, R.string.output_unavailable, Toast.LENGTH_SHORT).show()
+                                        return@launch
+                                    }
+                                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(context.getString(R.string.copy_path), path)))
+                                    Toast.makeText(context, R.string.copy_success, Toast.LENGTH_SHORT).show()
+                                }
+                            }, logs, model::editSnapshot, outputAvailable = availableOutputPath.isNotBlank() && availableOutputPath == outputPath)
                         Screen.COMPARE -> CompareScreen(comparisonUi, { old ->
                             pendingComparisonExport = false
                             model.preparePicker(if (old) "snapshot-old" else "snapshot-new")

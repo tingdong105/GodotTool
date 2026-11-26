@@ -16,6 +16,22 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
+ * 检查公开产物是否可读取，排除空占位并兼容旧目录产物。
+ * 使用示例：isOutputAvailable(path)。
+ * @param path 任务保存的完整产物路径。
+ * @return 是否存在可读取的产物，路径无效或权限不足时返回 false。
+ */
+fun isOutputAvailable(path: String): Boolean {
+    if (path.isBlank()) return false
+    return try {
+        val output = File(path)
+        output.isAbsolute && output.canRead() && (output.isDirectory || output.isFile && output.length() > 0L)
+    } catch (_: SecurityException) {
+        false
+    }
+}
+
+/**
  * 将私有工作区原子发布为日期次数 ZIP。
  * @author Tingdong
  * @date 2026-11-24

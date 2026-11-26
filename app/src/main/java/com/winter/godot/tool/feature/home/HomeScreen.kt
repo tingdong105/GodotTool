@@ -88,14 +88,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param onStart 提交任务。
  * @param onNew 开始新一轮处理。
  * @param onHistory 查看处理记录。
- * @param onOpen 打开处理结果。
+ * @param onCopyPath 复制已生成产物的完整路径。
  * @param logs 关键处理日志。
+ * @param outputAvailable 公开产物已通过后台可用性检查。
  */
 @Composable
 fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, busy: Boolean,
     onStep: (Int) -> Unit, onChoose: () -> Unit, onFollow: (Boolean) -> Unit,
     onSelection: (RecoverySelection) -> Unit, onStart: () -> Unit, onNew: () -> Unit,
-    onHistory: () -> Unit, onOpen: (String) -> Unit, logs: List<TaskLogLine> = emptyList(), onSnapshot: (Boolean) -> Unit = {}) {
+    onHistory: () -> Unit, onCopyPath: (String) -> Unit, logs: List<TaskLogLine> = emptyList(), onSnapshot: (Boolean) -> Unit = {},
+    outputAvailable: Boolean = false) {
     val wide = LocalWideContent.current
     // 单双栏共用步骤锚点。
     val steps = rememberLazyListState()
@@ -154,9 +156,13 @@ fun HomeScreen(state: ToolUiState, settings: ToolSettings, latest: TaskRecord?, 
                 if (!running) {
                     ResultSummary(latest)
                     val ready = latest.status in setOf(TaskStatus.SUCCEEDED, TaskStatus.PARTIAL)
+                    val outputPath = remember(latest.summary) {
+                        runCatching { JSONObject(latest.summary).optString("outputPath") }.getOrDefault("")
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(stringResource(if (ready) R.string.view_files else R.string.history),
-                            { if (ready) onOpen(latest.id) else onHistory() }, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon))
+                        TextButton(stringResource(if (ready) R.string.copy_path else R.string.history),
+                            { if (ready) onCopyPath(outputPath) else onHistory() }, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon),
+                            enabled = !ready || outputAvailable && outputPath.isNotBlank())
                         PrimaryButton(stringResource(R.string.got_it), onNew, Modifier.weight(1f).heightIn(min = Theme.sizes.largeIcon), enabled = !busy, icon = MiuixIcons.Basic.Check)
                     }
                 }
