@@ -68,6 +68,7 @@ import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.FloatingActionButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -125,10 +126,13 @@ fun TasksScreen(tasks: List<TaskRecord>, active: String?, onDelete: (Set<String>
             enter = slideInVertically(spring(dampingRatio = 0.6f, stiffness = 260f)) { it * 2 } + fadeIn(tween(180)),
             exit = slideOutVertically(spring(dampingRatio = 0.75f, stiffness = 300f)) { it * 2 } + fadeOut(tween(180))) {
             FloatingActionButton(onClick = { if (!busy && selecting) pendingDeletion = ArrayList(selection) },
+                containerColor = MiuixTheme.colorScheme.error,
                 modifier = Modifier.semantics { if (busy) disabled() }) {
-                if (busy) CircularProgressIndicator(Modifier.size(Theme.sizes.icon))
+                if (busy) CircularProgressIndicator(Modifier.size(Theme.sizes.icon),
+                    colors = ProgressIndicatorDefaults.progressIndicatorColors(foregroundColor = MiuixTheme.colorScheme.onError,
+                        backgroundColor = MiuixTheme.colorScheme.onError.copy(alpha = 0.2f)))
                 else Icon(MiuixIcons.Delete, stringResource(R.string.tasks_delete_selected, selection.size),
-                    Modifier.size(Theme.sizes.icon), tint = MiuixTheme.colorScheme.onPrimary)
+                    Modifier.size(Theme.sizes.icon), tint = MiuixTheme.colorScheme.onError)
             }
         }
     }

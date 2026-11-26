@@ -153,8 +153,8 @@ private fun ComparisonDeleteAction(selecting: Boolean, onDelete: () -> Unit, mod
     AnimatedVisibility(selecting, modifier = modifier,
         enter = slideInVertically(spring(dampingRatio = 0.65f, stiffness = 400f)) { it * 2 } + fadeIn(),
         exit = slideOutVertically(spring(dampingRatio = 0.8f, stiffness = 450f)) { it * 2 } + fadeOut()) {
-        FloatingActionButton(onClick = onDelete) {
-            Icon(MiuixIcons.Delete, stringResource(R.string.delete), Modifier.size(Theme.sizes.icon), tint = MiuixTheme.colorScheme.onPrimary)
+        FloatingActionButton(onClick = onDelete, containerColor = MiuixTheme.colorScheme.error) {
+            Icon(MiuixIcons.Delete, stringResource(R.string.delete), Modifier.size(Theme.sizes.icon), tint = MiuixTheme.colorScheme.onError)
         }
     }
 }
