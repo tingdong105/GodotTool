@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.GodotTool" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.GodotTool.Starting" parent="Theme.GodotTool">
+        <item name="android:windowBackground">@drawable/startup_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/startup_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/startup_light_bars</item>
+    </style>
 </resources>
